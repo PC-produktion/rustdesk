@@ -43,6 +43,7 @@ jobs:
         env:
           VCPKG_ROOT: 'C:/vcpkg'
         run: |
+          cargo build --release
           cd flutter
           flutter build windows --release --no-pub || true
           cmake --build build/windows/x64 --config Release --target rustdesk
@@ -54,8 +55,9 @@ jobs:
           if (Test-Path "flutter/build/windows/x64/runner/Release") {
               Copy-Item -Path "flutter/build/windows/x64/runner/Release/*" -Destination "release_dist" -Recurse -Force
           }
-          Get-ChildItem -Path "target/release" -Filter "*.dll" -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
-          Get-ChildItem -Path "target/release" -Filter "*.exe" -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
+          # Suche nach allen erzeugten DLLs und EXEs im gesamten target-Ordner
+          Get-ChildItem -Path "target/release" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
+          Get-ChildItem -Path "target/release" -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
           Get-ChildItem -Path "flutter/build/windows/x64/plugins" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
 
       - name: Upload Complete Windows Client
