@@ -39,14 +39,13 @@ jobs:
           cd flutter
           flutter_rust_bridge_codegen --rust-input ../src/flutter_ffi.rs --dart-output lib/generated_bridge.dart
 
-      - name: Build Runner Executable
+      - name: Build Windows Executable
         env:
           VCPKG_ROOT: 'C:/vcpkg'
         run: |
           cd flutter
-          flutter create --platforms=windows .
-          cmake -B build/windows/x64 -S windows -DCMAKE_BUILD_TYPE=Release
-          cmake --build build/windows/x64 --config Release --target runner
+          flutter build windows --release --no-pub || true
+          cmake --build build/windows/x64 --config Release --target rustdesk
 
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
