@@ -12,22 +12,26 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Install LLVM / Clang
+        run: choco install llvm -y
+
       - name: Install Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.19.x'
+          flutter-version: '3.24.x'
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Install Dependencies & vcpkg
-        run: |
-          vcpkg integrate install
+      - name: Install flutter_rust_bridge_codegen
+        run: cargo install flutter_rust_bridge_codegen --version 1.80.1
 
-      - name: Build RustDesk Flutter Windows
+      - name: Build Flutter Client
+        env:
+          VCPKG_ROOT: 'C:/vcpkg'
         run: |
           cd flutter
           flutter pub get
