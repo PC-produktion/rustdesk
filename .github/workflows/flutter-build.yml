@@ -44,13 +44,10 @@ jobs:
           VCPKG_ROOT: 'C:/vcpkg'
         run: |
           cd flutter
-          cargo build --release
-          flutter build windows --release --no-pub
+          flutter build windows --release
 
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
         with:
           name: rustdesk-windows-custom
-          path: |
-            flutter/build/windows/x64/runner/Release/*
-            target/release/*.exe
+          path: flutter/build/windows/x64/runner/Release/*
