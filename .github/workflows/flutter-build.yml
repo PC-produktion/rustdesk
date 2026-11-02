@@ -23,12 +23,18 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Build Windows Client
+      - name: Install Dependencies & vcpkg
         run: |
-          cargo build --release
+          vcpkg integrate install
+
+      - name: Build RustDesk Flutter Windows
+        run: |
+          cd flutter
+          flutter pub get
+          flutter build windows --release
 
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
         with:
           name: rustdesk-windows-custom
-          path: target/release/*.exe
+          path: flutter/build/windows/x64/runner/Release/*
