@@ -29,16 +29,21 @@ jobs:
       - name: Install flutter_rust_bridge_codegen
         run: cargo install flutter_rust_bridge_codegen --version 1.80.1
 
+      - name: Prepare Flutter Dependencies
+        run: |
+          cd flutter
+          flutter pub get
+
       - name: Generate Bridge Code
         run: |
-          flutter_rust_bridge_codegen --rust-input src/flutter_ffi.rs --dart-output flutter/lib/generated_bridge.dart
+          cd flutter
+          flutter_rust_bridge_codegen --rust-input ../src/flutter_ffi.rs --dart-output lib/generated_bridge.dart
 
       - name: Build Flutter Client
         env:
           VCPKG_ROOT: 'C:/vcpkg'
         run: |
           cd flutter
-          flutter pub get
           flutter build windows --release
 
       - name: Upload Windows Artifact
