@@ -39,7 +39,7 @@ jobs:
           cd flutter
           flutter_rust_bridge_codegen --rust-input ../src/flutter_ffi.rs --dart-output lib/generated_bridge.dart
 
-      - name: Build Windows Executable
+      - name: Build Rust Engine and Flutter App
         env:
           VCPKG_ROOT: 'C:/vcpkg'
         run: |
@@ -47,8 +47,16 @@ jobs:
           flutter build windows --release --no-pub || true
           cmake --build build/windows/x64 --config Release --target rustdesk
 
-      - name: Upload Windows Artifact
+      - name: Bundle Executable & DLLs
+        run: |
+          mkdir release_dist
+          if exist flutter\build\windows\x64\runner\Release\* xcopy /E /I /Y flutter\build\windows\x64\runner\Release\* release_dist\
+          if exist target\release\*.dll copy /Y target\release\*.dll release_dist\
+          if exist target\release\*.exe copy /Y target\release\*.exe release_dist\
+          if exist flutter\build\windows\x64\plugins\*\Release\*.dll copy /Y flutter\build\windows\x64\plugins\*\Release\*.dll release_dist\
+
+      - name: Upload Complete Windows Client
         uses: actions/upload-artifact@v4
         with:
-          name: rustdesk-windows-custom
-          path: flutter/build/windows/x64/runner/Release/*
+          name: rustdesk-windows-complete
+          path: release_dist/*
