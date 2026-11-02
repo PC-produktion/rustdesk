@@ -48,13 +48,15 @@ jobs:
           cmake --build build/windows/x64 --config Release --target rustdesk
 
       - name: Bundle Executable & DLLs
-        shell: cmd
+        shell: powershell
         run: |
-          mkdir release_dist
-          if exist flutter\build\windows\x64\runner\Release xcopy /E /I /Y flutter\build\windows\x64\runner\Release\* release_dist\
-          if exist target\release copy /Y target\release\*.dll release_dist\
-          if exist target\release copy /Y target\release\*.exe release_dist\
-          if exist flutter\build\windows\x64\plugins copy /s /y flutter\build\windows\x64\plugins\*.dll release_dist\
+          New-Item -ItemType Directory -Force -Path release_dist
+          if (Test-Path "flutter/build/windows/x64/runner/Release") {
+              Copy-Item -Path "flutter/build/windows/x64/runner/Release/*" -Destination "release_dist" -Recurse -Force
+          }
+          Get-ChildItem -Path "target/release" -Filter "*.dll" -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
+          Get-ChildItem -Path "target/release" -Filter "*.exe" -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
+          Get-ChildItem -Path "flutter/build/windows/x64/plugins" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
 
       - name: Upload Complete Windows Client
         uses: actions/upload-artifact@v4
