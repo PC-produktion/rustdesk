@@ -45,27 +45,25 @@ jobs:
         run: |
           cargo build --release
           cd flutter
-          flutter build windows --release --no-pub || true
-          cmake --build build/windows/x64 --config Release --target rustdesk
+          flutter build windows --release
 
       - name: Bundle Executable & DLLs
         shell: powershell
         run: |
-          # 1. Erstelle einen sauberen Zielordner
           if (Test-Path "release_dist") { Remove-Item -Path "release_dist" -Recurse -Force }
           New-Item -ItemType Directory -Force -Path release_dist
 
-          # 2. Kopiere den VOLLSTÄNDIGEN Flutter-Release-Ordner inkl. data/ und plugins/
+          # 1. Gesamten Flutter Release-Ordner inkl. subfolders (data/flutter_assets) kopieren
           if (Test-Path "flutter/build/windows/x64/runner/Release") {
-              Copy-Item -Path "flutter/build/windows/x64/runner/Release/*" -Destination "release_dist" -Recurse -Force
+              Copy-Item -Path "flutter/build/windows/x64/runner/Release\*" -Destination "release_dist" -Recurse -Force
           }
 
-          # 3. Kopiere nur die Haupt-RustDesk-Binary aus target/release (ohne temporäre Build-Skripte)
+          # 2. Rust binary einfügen
           if (Test-Path "target/release/rustdesk.exe") {
               Copy-Item -Path "target/release/rustdesk.exe" -Destination "release_dist" -Force
           }
 
-          # 4. Kopiere eventuell fehlende Plugin-DLLs
+          # 3. Ergänzende DLLs kopieren
           Get-ChildItem -Path "flutter/build/windows/x64/plugins" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
 
       - name: Upload Complete Windows Client
