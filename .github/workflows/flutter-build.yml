@@ -12,17 +12,17 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install Build Tools & System Dependencies
+      - name: Install Build Tools
         run: |
           choco install llvm cmake ninja pkgconfiglite -y
 
       - name: Setup Visual Studio Developer Command Prompt
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Install vcpkg dependencies (Opus & Sodium)
+      - name: Install vcpkg dependencies (Manifest Mode)
         run: |
           vcpkg integrate install
-          vcpkg install opus:x64-windows libsodium:x64-windows
+          vcpkg install --triplet x64-windows
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -51,7 +51,6 @@ jobs:
       - name: Build Rust Engine and Flutter App
         env:
           VCPKG_ROOT: 'C:/vcpkg'
-          PKKG_CONFIG_PATH: 'C:/vcpkg/installed/x64-windows/lib/pkgconfig'
         run: |
           cargo build --release
           cd flutter
