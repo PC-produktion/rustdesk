@@ -12,12 +12,17 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install Build Tools & C++ Workload
+      - name: Install Build Tools & System Dependencies
         run: |
-          choco install llvm cmake ninja -y
+          choco install llvm cmake ninja pkgconfiglite -y
 
       - name: Setup Visual Studio Developer Command Prompt
         uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install vcpkg dependencies (Opus & Sodium)
+        run: |
+          vcpkg integrate install
+          vcpkg install opus:x64-windows libsodium:x64-windows
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -46,6 +51,7 @@ jobs:
       - name: Build Rust Engine and Flutter App
         env:
           VCPKG_ROOT: 'C:/vcpkg'
+          PKKG_CONFIG_PATH: 'C:/vcpkg/installed/x64-windows/lib/pkgconfig'
         run: |
           cargo build --release
           cd flutter
@@ -57,7 +63,7 @@ jobs:
           if (Test-Path "release_dist") { Remove-Item -Path "release_dist" -Recurse -Force }
           New-Item -ItemType Directory -Force -Path release_dist
 
-          # 1. Gesamten Flutter Release-Ordner inkl. subfolders (data/flutter_assets) kopieren
+          # 1. Gesamten Flutter Release-Ordner inkl. Unterordner (data/flutter_assets) kopieren
           if (Test-Path "flutter/build/windows/x64/runner/Release") {
               Copy-Item -Path "flutter/build/windows/x64/runner/Release\*" -Destination "release_dist" -Recurse -Force
           }
