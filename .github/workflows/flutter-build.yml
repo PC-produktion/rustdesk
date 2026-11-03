@@ -12,8 +12,8 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install LLVM / Clang
-        run: choco install llvm -y
+      - name: Install Build Tools (LLVM, CMake, Ninja)
+        run: choco install llvm cmake ninja -y
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
