@@ -51,17 +51,25 @@ jobs:
       - name: Bundle Executable & DLLs
         shell: powershell
         run: |
+          # 1. Erstelle einen sauberen Zielordner
+          if (Test-Path "release_dist") { Remove-Item -Path "release_dist" -Recurse -Force }
           New-Item -ItemType Directory -Force -Path release_dist
+
+          # 2. Kopiere den VOLLSTÄNDIGEN Flutter-Release-Ordner inkl. data/ und plugins/
           if (Test-Path "flutter/build/windows/x64/runner/Release") {
               Copy-Item -Path "flutter/build/windows/x64/runner/Release/*" -Destination "release_dist" -Recurse -Force
           }
-          # Suche nach allen erzeugten DLLs und EXEs im gesamten target-Ordner
-          Get-ChildItem -Path "target/release" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
-          Get-ChildItem -Path "target/release" -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
+
+          # 3. Kopiere nur die Haupt-RustDesk-Binary aus target/release (ohne temporäre Build-Skripte)
+          if (Test-Path "target/release/rustdesk.exe") {
+              Copy-Item -Path "target/release/rustdesk.exe" -Destination "release_dist" -Force
+          }
+
+          # 4. Kopiere eventuell fehlende Plugin-DLLs
           Get-ChildItem -Path "flutter/build/windows/x64/plugins" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
 
       - name: Upload Complete Windows Client
         uses: actions/upload-artifact@v4
         with:
           name: rustdesk-windows-complete
-          path: release_dist/*
+          path: release_dist/
