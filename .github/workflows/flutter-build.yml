@@ -19,10 +19,10 @@ jobs:
       - name: Setup Visual Studio Developer Command Prompt
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Install vcpkg dependencies (Manifest Mode)
+      - name: Install vcpkg dependencies (Static Triplet)
         run: |
           vcpkg integrate install
-          vcpkg install --triplet x64-windows
+          vcpkg install --triplet x64-windows-static
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -51,6 +51,7 @@ jobs:
       - name: Build Rust Engine and Flutter App
         env:
           VCPKG_ROOT: 'C:/vcpkg'
+          VCPKGRS_DYNAMIC: '0'
         run: |
           cargo build --release
           cd flutter
