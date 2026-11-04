@@ -7,13 +7,13 @@ jobs:
   build-windows:
     runs-on: windows-2022
     env:
-      VCPKG_ROOT: 'C:/vcpkg'
+      VCPKG_ROOT: 'C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/vcpkg'
       VCPKGRS_DYNAMIC: '0'
       LIBCLANG_PATH: 'C:/Program Files/LLVM/bin'
-      INCLUDE: 'C:/vcpkg/installed/x64-windows-static/include'
-      LIB: 'C:/vcpkg/installed/x64-windows-static/lib'
-      CLANG_ARGS: '-I C:/vcpkg/installed/x64-windows-static/include -target x86_64-pc-windows-msvc'
-      BINDGEN_EXTRA_CLANG_ARGS: '-I C:/vcpkg/installed/x64-windows-static/include -target x86_64-pc-windows-msvc'
+      INCLUDE: 'C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/vcpkg/installed/x64-windows-static/include'
+      LIB: 'C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/vcpkg/installed/x64-windows-static/lib'
+      CLANG_ARGS: '-I "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/vcpkg/installed/x64-windows-static/include" -target x86_64-pc-windows-msvc'
+      BINDGEN_EXTRA_CLANG_ARGS: '-I "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/vcpkg/installed/x64-windows-static/include" -target x86_64-pc-windows-msvc'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -29,8 +29,9 @@ jobs:
 
       - name: Install vcpkg dependencies (Static Triplet)
         run: |
-          vcpkg integrate install
-          vcpkg install --triplet x64-windows-static
+          cd "$env:VCPKG_ROOT"
+          .\vcpkg integrate install
+          .\vcpkg install --triplet x64-windows-static
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
