@@ -6,6 +6,12 @@ on:
 jobs:
   build-windows:
     runs-on: windows-2022
+    env:
+      VCPKG_ROOT: 'C:/vcpkg'
+      VCPKGRS_DYNAMIC: '0'
+      LIBCLANG_PATH: 'C:/Program Files/LLVM/bin'
+      CLANG_ARGS: '-I C:/vcpkg/installed/x64-windows-static/include -target x86_64-pc-windows-msvc'
+      BINDGEN_EXTRA_CLANG_ARGS: '-I C:/vcpkg/installed/x64-windows-static/include -target x86_64-pc-windows-msvc'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -49,11 +55,6 @@ jobs:
           flutter_rust_bridge_codegen --rust-input ../src/flutter_ffi.rs --dart-output lib/generated_bridge.dart
 
       - name: Build Rust Engine and Flutter App
-        env:
-          VCPKG_ROOT: 'C:/vcpkg'
-          VCPKGRS_DYNAMIC: '0'
-          LIBCLANG_PATH: 'C:/Program Files/LLVM/bin'
-          CLANG_ARGS: '-I C:/vcpkg/installed/x64-windows-static/include'
         run: |
           cargo build --release
           cd flutter
