@@ -27,11 +27,10 @@ jobs:
       - name: Setup Visual Studio Developer Command Prompt
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Install vcpkg dependencies (Static Triplet)
+      - name: Install vcpkg dependencies (Manifest Mode)
         run: |
-          cd "$env:VCPKG_ROOT"
-          .\vcpkg integrate install
-          .\vcpkg install --triplet x64-windows-static
+          & "$env:VCPKG_ROOT\vcpkg.exe" integrate install
+          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows-static --x-manifest-root="$PWD"
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
