@@ -54,10 +54,8 @@ jobs:
 
       - name: Build Rust Engine and Flutter App
         env:
-          INCLUDE: '${{ github.workspace }}/vcpkg_installed/x64-windows-static/include'
-          LIB: '${{ github.workspace }}/vcpkg_installed/x64-windows-static/lib'
-          CLANG_ARGS: '-I ${{ github.workspace }}/vcpkg_installed/x64-windows-static/include -target x86_64-pc-windows-msvc'
-          BINDGEN_EXTRA_CLANG_ARGS: '-I ${{ github.workspace }}/vcpkg_installed/x64-windows-static/include -target x86_64-pc-windows-msvc'
+          RUSTFLAGS: '-L native=${{ github.workspace }}/vcpkg_installed/x64-windows-static/lib'
+          BINDGEN_EXTRA_CLANG_ARGS: '-I"${{ github.workspace }}/vcpkg_installed/x64-windows-static/include" -target x86_64-pc-windows-msvc'
         run: |
           cargo build --release
           cd flutter
