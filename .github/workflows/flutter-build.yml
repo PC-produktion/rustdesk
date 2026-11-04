@@ -10,10 +10,6 @@ jobs:
       VCPKG_ROOT: 'C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/vcpkg'
       VCPKGRS_DYNAMIC: '0'
       LIBCLANG_PATH: 'C:/Program Files/LLVM/bin'
-      INCLUDE: 'C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/vcpkg/installed/x64-windows-static/include'
-      LIB: 'C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/vcpkg/installed/x64-windows-static/lib'
-      CLANG_ARGS: '-I "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/vcpkg/installed/x64-windows-static/include" -target x86_64-pc-windows-msvc'
-      BINDGEN_EXTRA_CLANG_ARGS: '-I "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/vcpkg/installed/x64-windows-static/include" -target x86_64-pc-windows-msvc'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -30,7 +26,7 @@ jobs:
       - name: Install vcpkg dependencies (Manifest Mode)
         run: |
           & "$env:VCPKG_ROOT\vcpkg.exe" integrate install
-          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows-static --x-manifest-root="$PWD"
+          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows-static
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -57,6 +53,11 @@ jobs:
           flutter_rust_bridge_codegen --rust-input ../src/flutter_ffi.rs --dart-output lib/generated_bridge.dart
 
       - name: Build Rust Engine and Flutter App
+        env:
+          INCLUDE: '${{ github.workspace }}/vcpkg_installed/x64-windows-static/include'
+          LIB: '${{ github.workspace }}/vcpkg_installed/x64-windows-static/lib'
+          CLANG_ARGS: '-I ${{ github.workspace }}/vcpkg_installed/x64-windows-static/include -target x86_64-pc-windows-msvc'
+          BINDGEN_EXTRA_CLANG_ARGS: '-I ${{ github.workspace }}/vcpkg_installed/x64-windows-static/include -target x86_64-pc-windows-msvc'
         run: |
           cargo build --release
           cd flutter
