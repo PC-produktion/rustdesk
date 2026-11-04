@@ -52,6 +52,8 @@ jobs:
         env:
           VCPKG_ROOT: 'C:/vcpkg'
           VCPKGRS_DYNAMIC: '0'
+          LIBCLANG_PATH: 'C:/Program Files/LLVM/bin'
+          CLANG_ARGS: '-I C:/vcpkg/installed/x64-windows-static/include'
         run: |
           cargo build --release
           cd flutter
