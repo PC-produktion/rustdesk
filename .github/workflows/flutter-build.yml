@@ -67,17 +67,17 @@ jobs:
           if (Test-Path "release_dist") { Remove-Item -Path "release_dist" -Recurse -Force }
           New-Item -ItemType Directory -Force -Path release_dist
 
-          # 1. Gesamten Flutter Release-Ordner inkl. Unterordner (data/flutter_assets) kopieren
+          # 1. Gesamten Flutter-Build-Ordner als Basis kopieren (enthält die richtige GUI-Runner.exe und assets)
           if (Test-Path "flutter/build/windows/x64/runner/Release") {
               Copy-Item -Path "flutter/build/windows/x64/runner/Release\*" -Destination "release_dist" -Recurse -Force
           }
 
-          # 2. Rust binary einfügen
-          if (Test-Path "target/release/rustdesk.exe") {
-              Copy-Item -Path "target/release/rustdesk.exe" -Destination "release_dist" -Force
+          # 2. Rust-DLLs & System-Binaries (falls vorhanden) beilegen, ohne den Flutter Runner zu überschreiben
+          if (Test-Path "target/release/librustdesk.dll") {
+              Copy-Item -Path "target/release/librustdesk.dll" -Destination "release_dist" -Force
           }
 
-          # 3. Ergänzende DLLs kopieren
+          # 3. Ergänzende Plugin-DLLs kopieren
           Get-ChildItem -Path "flutter/build/windows/x64/plugins" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
 
       - name: Upload Complete Windows Client
