@@ -42,12 +42,23 @@ jobs:
       - name: Install flutter_rust_bridge_codegen
         run: cargo install flutter_rust_bridge_codegen --version 1.80.1
 
-      - name: Build WindowInjection.dll
+      - name: Locate and Build WindowInjection.dll
         shell: powershell
         run: |
+          Write-Host "Suche nach WindowInjection Dateien im Repository:"
+          Get-ChildItem -Recurse -Filter "*WindowInjection*" | Select-Object FullName
+
+          # 1. Prüfen ob .vcxproj oder .sln existiert
           $proj = Get-ChildItem -Recurse -Filter "*WindowInjection*.vcxproj" | Select-Object -First 1
           if ($proj) {
               msbuild $proj.FullName /p:Configuration=Release /p:Platform=x64
+          }
+
+          # 2. Prüfen ob CMakeLists.txt in einem WindowInjection-Ordner existiert
+          $cmakeDir = Get-ChildItem -Recurse -Directory -Filter "*WindowInjection*" | Select-Object -First 1
+          if ($cmakeDir -and (Test-Path "$($cmakeDir.FullName)\CMakeLists.txt")) {
+              cmake -S $cmakeDir.FullName -B "$($cmakeDir.FullName)\build" -A x64
+              cmake --build "$($cmakeDir.FullName)\build" --config Release
           }
 
       - name: Prepare Flutter Dependencies
@@ -80,14 +91,19 @@ jobs:
               Copy-Item -Path "flutter/build/windows/x64/runner/Release\*" -Destination "release_dist" -Recurse -Force
           }
 
-          # 2. Rust-Engine & eigene Hilfs-DLLs (inkl. WindowInjection.dll) kopieren
+          # 2. Rust-Engine & alle gefundenen WindowInjection-DLLs kopieren
           if (Test-Path "target/release/librustdesk.dll") {
               Copy-Item -Path "target/release/librustdesk.dll" -Destination "release_dist" -Force
           }
-          Get-ChildItem -Recurse -Filter "WindowInjection.dll" -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
+          Get-ChildItem -Recurse -Filter "*WindowInjection*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
+              Copy-Item -Path $_.FullName -Destination "release_dist\WindowInjection.dll" -Force
+          }
 
           # 3. Alle Flutter-Plugins mitkopieren
           Get-ChildItem -Path "flutter/build/windows/x64/plugins" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
+
+          # Kontrolle im Log ausgeben
+          Get-ChildItem "release_dist" | Select-Object Name, Length
 
       - name: Upload Complete Windows Client
         uses: actions/upload-artifact@v4
