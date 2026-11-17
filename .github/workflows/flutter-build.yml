@@ -42,6 +42,14 @@ jobs:
       - name: Install flutter_rust_bridge_codegen
         run: cargo install flutter_rust_bridge_codegen --version 1.80.1
 
+      - name: Build WindowInjection.dll
+        shell: powershell
+        run: |
+          $proj = Get-ChildItem -Recurse -Filter "*WindowInjection*.vcxproj" | Select-Object -First 1
+          if ($proj) {
+              msbuild $proj.FullName /p:Configuration=Release /p:Platform=x64
+          }
+
       - name: Prepare Flutter Dependencies
         run: |
           cd flutter
@@ -72,15 +80,13 @@ jobs:
               Copy-Item -Path "flutter/build/windows/x64/runner/Release\*" -Destination "release_dist" -Recurse -Force
           }
 
-          # 2. DLLs aus Rust Target kopieren
+          # 2. Rust-Engine & eigene Hilfs-DLLs (inkl. WindowInjection.dll) kopieren
           if (Test-Path "target/release/librustdesk.dll") {
               Copy-Item -Path "target/release/librustdesk.dll" -Destination "release_dist" -Force
           }
-          if (Test-Path "target/release/rustdesk.dll") {
-              Copy-Item -Path "target/release/rustdesk.dll" -Destination "release_dist" -Force
-          }
+          Get-ChildItem -Recurse -Filter "WindowInjection.dll" -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
 
-          # 3. Alle Plugins mitkopieren
+          # 3. Alle Flutter-Plugins mitkopieren
           Get-ChildItem -Path "flutter/build/windows/x64/plugins" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
 
       - name: Upload Complete Windows Client
