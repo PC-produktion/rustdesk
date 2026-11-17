@@ -43,7 +43,7 @@ jobs:
         run: cargo install flutter_rust_bridge_codegen --version 1.80.1
 
       - name: Locate and Build WindowInjection.dll
-        shell: powershell
+        shell: pwsh
         run: |
           Write-Host "Suche nach WindowInjection Dateien im Repository:"
           Get-ChildItem -Recurse -Filter "*WindowInjection*" | Select-Object FullName
@@ -72,35 +72,52 @@ jobs:
           flutter_rust_bridge_codegen --rust-input ../src/flutter_ffi.rs --dart-output lib/generated_bridge.dart
 
       - name: Build Rust Engine and Flutter App
+        shell: pwsh
         env:
           RUSTFLAGS: '-L native=${{ github.workspace }}/vcpkg_installed/x64-windows-static/lib'
           BINDGEN_EXTRA_CLANG_ARGS: '-I"${{ github.workspace }}/vcpkg_installed/x64-windows-static/include" -target x86_64-pc-windows-msvc'
         run: |
-          cargo build --release
-          cd flutter
+          $ErrorActionPreference = "Stop"
+          cargo build --release --lib --features flutter
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          Set-Location flutter
           flutter build windows --release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Bundle Executable & DLLs
-        shell: powershell
+        shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           if (Test-Path "release_dist") { Remove-Item -Path "release_dist" -Recurse -Force }
-          New-Item -ItemType Directory -Force -Path release_dist
+          New-Item -ItemType Directory -Force -Path release_dist | Out-Null
 
           # 1. Flutter Release als Basis
           if (Test-Path "flutter/build/windows/x64/runner/Release") {
               Copy-Item -Path "flutter/build/windows/x64/runner/Release\*" -Destination "release_dist" -Recurse -Force
           }
 
-          # 2. Rust-Engine & alle gefundenen WindowInjection-DLLs kopieren
+          # 2. Selbstgebaute Rust-Engine (mit Branding & flutter-Feature) kopieren
           if (Test-Path "target/release/librustdesk.dll") {
               Copy-Item -Path "target/release/librustdesk.dll" -Destination "release_dist" -Force
-          }
-          Get-ChildItem -Recurse -Filter "*WindowInjection*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
-              Copy-Item -Path $_.FullName -Destination "release_dist\WindowInjection.dll" -Force
+          } else {
+              Write-Error "target/release/librustdesk.dll wurde nicht erzeugt!"
           }
 
-          # 3. Alle Flutter-Plugins mitkopieren
-          Get-ChildItem -Path "flutter/build/windows/x64/plugins" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination "release_dist" -Force
+          # 3. WindowInjection.dll und printer_driver_adapter.dll mitkopieren (nur aus Build-/Repo-Pfaden, nicht aus release_dist)
+          Get-ChildItem -Path . -Recurse -Filter "*WindowInjection*.dll" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notlike "*\release_dist\*" } |
+            Select-Object -First 1 |
+            ForEach-Object { Copy-Item -Path $_.FullName -Destination "release_dist\WindowInjection.dll" -Force }
+
+          Get-ChildItem -Path . -Recurse -Filter "printer_driver_adapter.dll" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notlike "*\release_dist\*" } |
+            Select-Object -First 1 |
+            ForEach-Object { Copy-Item -Path $_.FullName -Destination "release_dist\printer_driver_adapter.dll" -Force }
+
+          # 4. Alle Flutter-Plugins mitkopieren
+          Get-ChildItem -Path "flutter/build/windows/x64/plugins" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue |
+            Copy-Item -Destination "release_dist" -Force
 
           # Kontrolle im Log ausgeben
           Get-ChildItem "release_dist" | Select-Object Name, Length
