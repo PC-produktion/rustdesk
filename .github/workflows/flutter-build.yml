@@ -123,6 +123,9 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
+      - name: Install flutter_rust_bridge_codegen
+        run: cargo install flutter_rust_bridge_codegen --version 1.80.1
+
       - name: Locate and Build WindowInjection.dll
         shell: pwsh
         run: |
@@ -140,6 +143,11 @@ jobs:
         run: |
           cd flutter
           flutter pub get
+
+      - name: Generate Bridge Code
+        run: |
+          cd flutter
+          flutter_rust_bridge_codegen --rust-input ../src/flutter_ffi.rs --dart-output lib/generated_bridge.dart
 
       - name: Build Rust Engine and Flutter App
         shell: pwsh
