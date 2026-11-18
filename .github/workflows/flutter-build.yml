@@ -3,18 +3,79 @@ name: Build the flutter version of the RustDesk
 on:
   workflow_dispatch:
 
+env:
+  VCPKG_ROOT: 'C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/vcpkg'
+  VCPKGRS_DYNAMIC: '0'
+  LIBCLANG_PATH: 'C:/Program Files/LLVM/bin'
+  CUSTOM_APP_NAME: 'Procine Remote'
+  RENDEZVOUS_SERVER: ''
+  RS_PUB_KEY: ''
+
 jobs:
   build-windows:
     runs-on: windows-2022
-    env:
-      VCPKG_ROOT: 'C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/vcpkg'
-      VCPKGRS_DYNAMIC: '0'
-      LIBCLANG_PATH: 'C:/Program Files/LLVM/bin'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Apply Custom Branding, Logo, Server & Disable Update Check
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          # 1. Produktname in src/common.rs auf Procine Remote ändern
+          $commonRs = "src/common.rs"
+          if (Test-Path $commonRs) {
+              $content = Get-Content $commonRs -Raw -Encoding UTF8
+              $content = $content -replace 'pub const APP_NAME:\s*&str\s*=\s*"RustDesk";', "pub const APP_NAME: &str = `"$env:CUSTOM_APP_NAME`";"
+              $content = $content -replace 'pub static ref APP_NAME:.*?=\s*"RustDesk".*?;', "pub const APP_NAME: &str = `"$env:CUSTOM_APP_NAME`";"
+              Set-Content $commonRs -Value $content -Encoding UTF8
+              Write-Host "APP_NAME in src/common.rs auf $env:CUSTOM_APP_NAME gesetzt."
+          }
+
+          # 2. Windows Fenstertitel in flutter/windows/runner/main.cpp anpassen
+          $mainCpp = "flutter/windows/runner/main.cpp"
+          if (Test-Path $mainCpp) {
+              $cpp = Get-Content $mainCpp -Raw -Encoding UTF8
+              $cpp = $cpp -replace 'L"RustDesk"', "L`"$env:CUSTOM_APP_NAME`""
+              Set-Content $mainCpp -Value $cpp -Encoding UTF8
+              Write-Host "Fenstertitel in main.cpp angepasst."
+          }
+
+          # 3. Update-Banner ("Neue Version verfügbar") deaktivieren
+          Get-ChildItem -Path "flutter/lib" -Recurse -Filter "*.dart" | ForEach-Object {
+              $dart = Get-Content $_.FullName -Raw -Encoding UTF8
+              if ($dart -match 'api\.github\.com/repos/rustdesk/rustdesk/releases' -or $dart -match 'rustdesk\.com/api/version') {
+                  $dart = $dart -replace 'https://api\.github\.com/repos/rustdesk/rustdesk/releases/latest', 'http://127.0.0.1:0/disabled'
+                  $dart = $dart -replace 'https://rustdesk\.com/api/version', 'http://127.0.0.1:0/disabled'
+                  Set-Content $_.FullName -Value $dart -Encoding UTF8
+                  Write-Host "Update-URL deaktiviert in: $($_.FullName)"
+              }
+          }
+
+          # 4. Großes Logo (flutter/assets/brand_logo.png) in pubspec.yaml eintragen & über "Your Desktop" einfügen
+          if (Test-Path "flutter/assets/brand_logo.png") {
+              $pubspec = Get-Content "flutter/pubspec.yaml" -Raw -Encoding UTF8
+              if ($pubspec -notmatch 'assets/brand_logo\.png') {
+                  $pubspec = $pubspec -replace '(assets:\s*\r?\n)', "`$1    - assets/brand_logo.png`r`n"
+                  Set-Content "flutter/pubspec.yaml" -Value $pubspec -Encoding UTF8
+                  Write-Host "brand_logo.png in pubspec.yaml registriert."
+              }
+
+              Get-ChildItem -Path "flutter/lib/desktop" -Recurse -Filter "*.dart" | ForEach-Object {
+                  $ui = Get-Content $_.FullName -Raw -Encoding UTF8
+                  if ($ui -match "translate\('Your Desktop'\)" -and $ui -notmatch 'brand_logo\.png') {
+                      $logoWidget = "Padding(padding: const EdgeInsets.only(bottom: 16.0), child: Image.asset('assets/brand_logo.png', height: 48, fit: BoxFit.contain)), "
+                      $ui = $ui -replace "(Text\(\s*translate\('Your Desktop'\))", "$logoWidget`$1"
+                      Set-Content $_.FullName -Value $ui -Encoding UTF8
+                      Write-Host "Großes Logo eingefügt in: $($_.FullName)"
+                  }
+              }
+          } else {
+              Write-Warning "flutter/assets/brand_logo.png nicht gefunden – Logo-Block wurde übersprungen."
+          }
 
       - name: Install Build Tools
         run: |
@@ -45,16 +106,10 @@ jobs:
       - name: Locate and Build WindowInjection.dll
         shell: pwsh
         run: |
-          Write-Host "Suche nach WindowInjection Dateien im Repository:"
-          Get-ChildItem -Recurse -Filter "*WindowInjection*" | Select-Object FullName
-
-          # 1. Prüfen ob .vcxproj oder .sln existiert
           $proj = Get-ChildItem -Recurse -Filter "*WindowInjection*.vcxproj" | Select-Object -First 1
           if ($proj) {
               msbuild $proj.FullName /p:Configuration=Release /p:Platform=x64
           }
-
-          # 2. Prüfen ob CMakeLists.txt in einem WindowInjection-Ordner existiert
           $cmakeDir = Get-ChildItem -Recurse -Directory -Filter "*WindowInjection*" | Select-Object -First 1
           if ($cmakeDir -and (Test-Path "$($cmakeDir.FullName)\CMakeLists.txt")) {
               cmake -S $cmakeDir.FullName -B "$($cmakeDir.FullName)\build" -A x64
@@ -92,19 +147,16 @@ jobs:
           if (Test-Path "release_dist") { Remove-Item -Path "release_dist" -Recurse -Force }
           New-Item -ItemType Directory -Force -Path release_dist | Out-Null
 
-          # 1. Flutter Release als Basis
           if (Test-Path "flutter/build/windows/x64/runner/Release") {
               Copy-Item -Path "flutter/build/windows/x64/runner/Release\*" -Destination "release_dist" -Recurse -Force
           }
 
-          # 2. Selbstgebaute Rust-Engine (mit Branding & flutter-Feature) kopieren
           if (Test-Path "target/release/librustdesk.dll") {
               Copy-Item -Path "target/release/librustdesk.dll" -Destination "release_dist" -Force
           } else {
               Write-Error "target/release/librustdesk.dll wurde nicht erzeugt!"
           }
 
-          # 3. WindowInjection.dll und printer_driver_adapter.dll mitkopieren (nur aus Build-/Repo-Pfaden, nicht aus release_dist)
           Get-ChildItem -Path . -Recurse -Filter "*WindowInjection*.dll" -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -notlike "*\release_dist\*" } |
             Select-Object -First 1 |
@@ -115,11 +167,9 @@ jobs:
             Select-Object -First 1 |
             ForEach-Object { Copy-Item -Path $_.FullName -Destination "release_dist\printer_driver_adapter.dll" -Force }
 
-          # 4. Alle Flutter-Plugins mitkopieren
           Get-ChildItem -Path "flutter/build/windows/x64/plugins" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue |
             Copy-Item -Destination "release_dist" -Force
 
-          # Kontrolle im Log ausgeben
           Get-ChildItem "release_dist" | Select-Object Name, Length
 
       - name: Upload Complete Windows Client
