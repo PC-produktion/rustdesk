@@ -44,21 +44,27 @@ jobs:
               Write-Host "OK: main.cpp aktualisiert."
           }
 
-          # 3. Update-Banner ("Neue Version verfügbar") im Rust- & Flutter-Code deaktivieren
-          $updateHits = 0
+          # 3. Pinkes Update-Banner sauber an der Rust-Quelle deaktivieren (gibt echten leeren String zurück)
+          $ffiRs = "src/flutter_ffi.rs"
+          if (Test-Path $ffiRs) {
+              $ffi = Get-Content $ffiRs -Raw -Encoding UTF8
+              $ffi = $ffi -replace '(pub\s+fn\s+main_get_new_version\s*\([^\)]*\)\s*->\s*String\s*\{)', "`$1 return String::new();"
+              Set-Content $ffiRs -Value $ffi -Encoding UTF8
+              Write-Host "OK: main_get_new_version in src/flutter_ffi.rs auf leeren String gesetzt."
+          }
+
           Get-ChildItem -Path "src", "flutter/lib" -Recurse -Include "*.rs", "*.dart" | ForEach-Object {
               $txt = Get-Content $_.FullName -Raw -Encoding UTF8
               $orig = $txt
               $txt = $txt -replace 'https://api\.github\.com/repos/rustdesk/rustdesk/releases/latest', 'http://127.0.0.1:0/disabled'
               $txt = $txt -replace 'https://rustdesk\.com/api/version', 'http://127.0.0.1:0/disabled'
+              $txt = $txt -replace 'https://rustdesk\.com/api/latest', 'http://127.0.0.1:0/disabled'
               $txt = $txt -replace 'https://api\.rustdesk\.com/version/latest', 'http://127.0.0.1:0/disabled'
               if ($txt -ne $orig) {
                   Set-Content $_.FullName -Value $txt -Encoding UTF8
-                  $updateHits++
-                  Write-Host "OK: Update-Check deaktiviert in $($_.Name)"
+                  Write-Host "OK: Update-URL deaktiviert in $($_.Name)"
               }
           }
-          Write-Host "Update-URLs ersetzt: $updateHits"
 
           # 4. Großes Logo (flutter/assets/brand_logo.png) mit exaktem Klammer-Matching über "Your Desktop" einbinden
           if (-not (Test-Path "flutter/assets/brand_logo.png")) {
