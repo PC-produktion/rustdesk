@@ -101,7 +101,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.24.x'
+          flutter-version: '3.24.0'
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -132,7 +132,7 @@ jobs:
       - name: Generate Bridge Code
         run: |
           cd flutter
-          flutter_rust_bridge_codegen --rust-input ../src/flutter_ffi.rs --dart-output lib/generated_bridge.dart
+          flutter_rust_bridge_codegen --rust-input ../src/flutter_ffi.rs --dart-output lib/generated_bridge.dart --no-build-runner
 
       - name: Build Rust Engine and Flutter App
         shell: pwsh
