@@ -57,7 +57,7 @@ jobs:
               }
           }
 
-          # 4. Logo (flutter/assets/brand_logo.png) über fitWidth auf volle Seitenleisten-Breite (190px) skalieren
+          # 4. Großes PROCINÉ-Logo einbinden (height: 95, damit es deutlich größer erscheint)
           if (-not (Test-Path "flutter/assets/brand_logo.png")) {
               Write-Error "FEHLER: flutter/assets/brand_logo.png wurde im Repository nicht gefunden!"
           }
@@ -85,18 +85,20 @@ jobs:
               }
               if ($end -gt $start) {
                   $fullTextWidget = $ui.Substring($start, $end - $start + 1)
-                  $replacement = "Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(bottom: 14.0), child: SizedBox(width: 190, child: Image.asset('assets/brand_logo.png', fit: BoxFit.fitWidth))), $fullTextWidget])"
+                  $replacement = "Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(bottom: 12.0), child: Image.asset('assets/brand_logo.png', height: 95, fit: BoxFit.contain, alignment: Alignment.centerLeft)), $fullTextWidget])"
                   $ui = $ui.Remove($start, $end - $start + 1).Insert($start, $replacement)
                   Set-Content $homePage -Value $ui -Encoding UTF8
-                  Write-Host "OK: Breites Logo (width: 190, fitWidth) eingefügt."
+                  Write-Host "OK: Großes Logo (height: 95) eingefügt."
               }
+          } else {
+              Write-Error "FEHLER: Your Desktop nicht in desktop_home_page.dart gefunden!"
           }
 
-          # 5. Pinkes Update-Banner in ALLEN Dart-Dateien von flutter/lib finden und komplett entfernen
+          # 5. Pinkes Update-Banner über den exakten RustDesk-Text ('new version of RustDesk available') finden und ausblenden
           $bannerRemoved = $false
           Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
               $dartContent = Get-Content $_.FullName -Raw -Encoding UTF8
-              $bannerAnchor = [regex]::Match($dartContent, "There is a newer version of RustDesk available")
+              $bannerAnchor = [regex]::Match($dartContent, "new version of RustDesk available")
               if ($bannerAnchor.Success) {
                   Write-Host "TREFFER für Update-Banner in: $($_.FullName)"
                   $before = $dartContent.Substring(0, $bannerAnchor.Index)
@@ -119,7 +121,7 @@ jobs:
                               $dartContent = $dartContent.Remove($wStart, $wEnd - $wStart + 1).Insert($wStart, "const SizedBox.shrink()")
                               Set-Content $_.FullName -Value $dartContent -Encoding UTF8
                               $bannerRemoved = $true
-                              Write-Host "OK: Pinkes Update-Banner in $($_.Name) durch SizedBox.shrink() ersetzt!"
+                              Write-Host "OK: Pinkes Update-Banner in $($_.Name) komplett entfernt!"
                               break
                           }
                       }
@@ -127,7 +129,7 @@ jobs:
               }
           }
           if (-not $bannerRemoved) {
-              Write-Warning "WARNUNG: Update-Banner Text wurde in keiner .dart-Datei gefunden!"
+              Write-Error "FEHLER: Update-Banner konnte nicht lokalisiert werden!"
           }
 
       - name: Install Build Tools
