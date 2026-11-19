@@ -58,7 +58,7 @@ jobs:
               }
           }
 
-          # 4. Großes Logo (flutter/assets/brand_logo.png) einbinden & pinken Update-Kasten im UI entfernen
+          # 4. Großes Logo (flutter/assets/brand_logo.png) einbinden & pinken Update-Kasten im UI komplett entfernen
           if (-not (Test-Path "flutter/assets/brand_logo.png")) {
               Write-Error "FEHLER: flutter/assets/brand_logo.png wurde im Repository nicht gefunden!"
           }
@@ -73,7 +73,7 @@ jobs:
           $homePage = "flutter/lib/desktop/pages/desktop_home_page.dart"
           $ui = Get-Content $homePage -Raw -Encoding UTF8
 
-          # 4a. Großes Logo über "Your Desktop" einfügen
+          # 4a. Deutlich größeres Logo (width: 185, height: 75) über "Your Desktop" einfügen
           $m = [regex]::Match($ui, "Text\(\s*translate\(['`"]Your Desktop['`"]\)")
           if ($m.Success) {
               $start = $m.Index
@@ -89,30 +89,48 @@ jobs:
               }
               if ($end -gt $start) {
                   $fullTextWidget = $ui.Substring($start, $end - $start + 1)
-                  $replacement = "Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(bottom: 12.0), child: Image.asset('assets/brand_logo.png', height: 48, fit: BoxFit.contain)), $fullTextWidget])"
+                  $replacement = "Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(bottom: 14.0), child: Image.asset('assets/brand_logo.png', width: 185, height: 75, fit: BoxFit.contain, alignment: Alignment.centerLeft)), $fullTextWidget])"
                   $ui = $ui.Remove($start, $end - $start + 1).Insert($start, $replacement)
-                  Write-Host "OK: Großes Logo eingefügt."
+                  Write-Host "OK: Großes Logo (185x75) eingefügt."
               }
           }
 
-          # 4b. Pinken Update-Kasten direkt im UI deaktivieren (alle Treffer in flutter/lib neutralisieren)
-          $dartHits = 0
-          Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
-              $d = Get-Content $_.FullName -Raw -Encoding UTF8
-              $dOrig = $d
-              # Ersetzt die Update-Versions-Variable/Abfrage sauber durch leeren String
-              $d = $d -replace 'bind\.mainGetNewVersion\(\)', "Future<String>.value('')"
-              $d = $d -replace "translate\(['`"]There is a newer version of RustDesk available", "'' + translate('There is a newer version of RustDesk available"
-              # Falls eine RxString/String-Variable newVersion geprüft wird (z. B. newVersion.isNotEmpty)
-              $d = $d -replace '(\bnewVersion\s*\.\s*)isNotEmpty', 'false'
-              $d = $d -replace '(\b_newVersion\s*\.\s*)isNotEmpty', 'false'
-              if ($d -ne $dOrig) {
-                  Set-Content $_.FullName -Value $d -Encoding UTF8
-                  $dartHits++
-                  Write-Host "OK: Update-Banner in $($_.Name) deaktiviert."
+          # 4b. Pinken Update-Kasten direkt über sein umschließendes Container/Obx-Widget in desktop_home_page.dart ausblenden
+          $bannerAnchor = [regex]::Match($ui, "There is a newer version of RustDesk available")
+          if ($bannerAnchor.Success) {
+              # Rückwärts das umschließende Widget (Obx( oder Container( oder Visibility() suchen
+              $before = $ui.Substring(0, $bannerAnchor.Index)
+              $wrapperMatches = [regex]::Matches($before, "(Obx|Visibility|Container)\s*\(")
+              $replacedBanner = $false
+              for ($w = $wrapperMatches.Count - 1; $w -ge 0; $w--) {
+                  $wStart = $wrapperMatches[$w].Index
+                  $openParen = $ui.IndexOf('(', $wStart)
+                  $d = 0
+                  $wEnd = -1
+                  for ($j = $openParen; $j -lt $ui.Length; $j++) {
+                      if ($ui[$j] -eq '(') { $d++ }
+                      elseif ($ui[$j] -eq ')') {
+                          $d--
+                          if ($d -eq 0) { $wEnd = $j; break }
+                      }
+                  }
+                  if ($wEnd -gt $bannerAnchor.Index) {
+                      $snippet = $ui.Substring($wStart, $wEnd - $wStart + 1)
+                      # Nur das innere Banner-Widget ersetzen (nicht die ganze Seitenleiste!)
+                      if ($snippet -notmatch "Your Desktop" -and $snippet -notmatch "One-time Password") {
+                          $ui = $ui.Remove($wStart, $wEnd - $wStart + 1).Insert($wStart, "const SizedBox.shrink()")
+                          $replacedBanner = $true
+                          Write-Host "OK: Pinkes Update-Banner Widget ($($wrapperMatches[$w].Groups[1].Value)) komplett durch SizedBox.shrink() ersetzt."
+                          break
+                      }
+                  }
               }
+              if (-not $replacedBanner) {
+                  Write-Warning "Hinweis: Kein separates Banner-Wrapper-Widget gefunden, prüfe Zeile manuell."
+              }
+          } else {
+              Write-Warning "Hinweis: Banner-Ankertext nicht in desktop_home_page.dart gefunden."
           }
-          Write-Host "Dart-Update-Stellen deaktiviert: $dartHits"
 
           Set-Content $homePage -Value $ui -Encoding UTF8
 
