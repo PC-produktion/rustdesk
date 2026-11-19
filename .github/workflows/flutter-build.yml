@@ -44,15 +44,7 @@ jobs:
               Write-Host "OK: main.cpp aktualisiert."
           }
 
-          # 3. Pinkes Update-Banner sauber an der Rust-Quelle deaktivieren (gibt echten leeren String zurück)
-          $ffiRs = "src/flutter_ffi.rs"
-          if (Test-Path $ffiRs) {
-              $ffi = Get-Content $ffiRs -Raw -Encoding UTF8
-              $ffi = $ffi -replace '(pub\s+fn\s+main_get_new_version\s*\([^\)]*\)\s*->\s*String\s*\{)', "`$1 return String::new();"
-              Set-Content $ffiRs -Value $ffi -Encoding UTF8
-              Write-Host "OK: main_get_new_version in src/flutter_ffi.rs auf leeren String gesetzt."
-          }
-
+          # 3. Update-URLs im gesamten Code deaktivieren
           Get-ChildItem -Path "src", "flutter/lib" -Recurse -Include "*.rs", "*.dart" | ForEach-Object {
               $txt = Get-Content $_.FullName -Raw -Encoding UTF8
               $orig = $txt
@@ -66,7 +58,7 @@ jobs:
               }
           }
 
-          # 4. Großes Logo (flutter/assets/brand_logo.png) mit exaktem Klammer-Matching über "Your Desktop" einbinden
+          # 4. Großes Logo (flutter/assets/brand_logo.png) einbinden & pinken Update-Kasten im UI entfernen
           if (-not (Test-Path "flutter/assets/brand_logo.png")) {
               Write-Error "FEHLER: flutter/assets/brand_logo.png wurde im Repository nicht gefunden!"
           }
@@ -80,6 +72,8 @@ jobs:
 
           $homePage = "flutter/lib/desktop/pages/desktop_home_page.dart"
           $ui = Get-Content $homePage -Raw -Encoding UTF8
+
+          # 4a. Großes Logo über "Your Desktop" einfügen
           $m = [regex]::Match($ui, "Text\(\s*translate\(['`"]Your Desktop['`"]\)")
           if ($m.Success) {
               $start = $m.Index
@@ -97,14 +91,30 @@ jobs:
                   $fullTextWidget = $ui.Substring($start, $end - $start + 1)
                   $replacement = "Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(bottom: 12.0), child: Image.asset('assets/brand_logo.png', height: 48, fit: BoxFit.contain)), $fullTextWidget])"
                   $ui = $ui.Remove($start, $end - $start + 1).Insert($start, $replacement)
-                  Set-Content $homePage -Value $ui -Encoding UTF8
-                  Write-Host "OK: Großes Logo sauber um vollständiges Text-Widget eingefügt."
-              } else {
-                  Write-Error "FEHLER: Schließende Klammer von Text(...) nicht gefunden."
+                  Write-Host "OK: Großes Logo eingefügt."
               }
-          } else {
-              Write-Error "FEHLER: Text(translate('Your Desktop')) nicht in $homePage gefunden!"
           }
+
+          # 4b. Pinken Update-Kasten direkt im UI deaktivieren (alle Treffer in flutter/lib neutralisieren)
+          $dartHits = 0
+          Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
+              $d = Get-Content $_.FullName -Raw -Encoding UTF8
+              $dOrig = $d
+              # Ersetzt die Update-Versions-Variable/Abfrage sauber durch leeren String
+              $d = $d -replace 'bind\.mainGetNewVersion\(\)', "Future<String>.value('')"
+              $d = $d -replace "translate\(['`"]There is a newer version of RustDesk available", "'' + translate('There is a newer version of RustDesk available"
+              # Falls eine RxString/String-Variable newVersion geprüft wird (z. B. newVersion.isNotEmpty)
+              $d = $d -replace '(\bnewVersion\s*\.\s*)isNotEmpty', 'false'
+              $d = $d -replace '(\b_newVersion\s*\.\s*)isNotEmpty', 'false'
+              if ($d -ne $dOrig) {
+                  Set-Content $_.FullName -Value $d -Encoding UTF8
+                  $dartHits++
+                  Write-Host "OK: Update-Banner in $($_.Name) deaktiviert."
+              }
+          }
+          Write-Host "Dart-Update-Stellen deaktiviert: $dartHits"
+
+          Set-Content $homePage -Value $ui -Encoding UTF8
 
       - name: Install Build Tools
         run: |
