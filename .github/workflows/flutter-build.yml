@@ -20,10 +20,23 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Apply Custom Branding, Logo, Server & Disable Update Check
+      - name: Inspect UI & Apply Custom Branding
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+
+          # DIAGNOSE: Exakte Stellen für Update-Banner und Logo im Repo ausgeben
+          Write-Host "=== DIAGNOSE: Suche nach mainGetNewVersion / newVersion / Status ==="
+          Select-String -Path "flutter/lib/**/*.dart" -Pattern "mainGetNewVersion|newVersion|new version of RustDesk" -Context 2,2 | ForEach-Object {
+              Write-Host "$($_.Filename):$($_.LineNumber) -> $($_.Line.Trim())"
+          }
+
+          Write-Host "=== DIAGNOSE: Zeilen rund um Your Desktop ==="
+          Select-String -Path "flutter/lib/desktop/pages/desktop_home_page.dart" -Pattern "Your Desktop" -Context 5,5 | ForEach-Object {
+              Write-Host $_.Context.PreContext
+              Write-Host ">>> $($_.Line)"
+              Write-Host $_.Context.PostContext
+          }
 
           # 1. Produktname in src/common.rs auf Procine Remote ändern
           $commonRs = "src/common.rs"
@@ -32,7 +45,6 @@ jobs:
               $content = $content -replace '(APP_NAME\s*:\s*&str\s*=\s*)"RustDesk"', "`$1`"$env:CUSTOM_APP_NAME`""
               $content = $content -replace '(APP_NAME\s*=\s*)"RustDesk"', "`$1`"$env:CUSTOM_APP_NAME`""
               Set-Content $commonRs -Value $content -Encoding UTF8
-              Write-Host "OK: src/common.rs aktualisiert."
           }
 
           # 2. Windows Fenstertitel anpassen
@@ -41,27 +53,25 @@ jobs:
               $cpp = Get-Content $mainCpp -Raw -Encoding UTF8
               $cpp = $cpp -replace 'L"RustDesk"', "L`"$env:CUSTOM_APP_NAME`""
               Set-Content $mainCpp -Value $cpp -Encoding UTF8
-              Write-Host "OK: main.cpp aktualisiert."
           }
 
-          # 3. Update-URLs im gesamten Code deaktivieren
-          Get-ChildItem -Path "src", "flutter/lib" -Recurse -Include "*.rs", "*.dart" | ForEach-Object {
-              $txt = Get-Content $_.FullName -Raw -Encoding UTF8
-              $orig = $txt
-              $txt = $txt -replace 'https://api\.github\.com/repos/rustdesk/rustdesk/releases/latest', 'http://127.0.0.1:0/disabled'
-              $txt = $txt -replace 'https://rustdesk\.com/api/version', 'http://127.0.0.1:0/disabled'
-              $txt = $txt -replace 'https://rustdesk\.com/api/latest', 'http://127.0.0.1:0/disabled'
-              $txt = $txt -replace 'https://api\.rustdesk\.com/version/latest', 'http://127.0.0.1:0/disabled'
-              if ($txt -ne $orig) {
-                  Set-Content $_.FullName -Value $txt -Encoding UTF8
+          # 3. Alle Future.value('') Reste & mainGetNewVersion sauber auf leeren String korrigieren
+          Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
+              $d = Get-Content $_.FullName -Raw -Encoding UTF8
+              $orig = $d
+              $d = $d -replace "Future(?:<String>)?\.value\(''\)", "''"
+              $d = $d -replace 'await\s+bind\.mainGetNewVersion\(\)', "''"
+              $d = $d -replace 'bind\.mainGetNewVersion\(\)', "Future<String>.value('')"
+              if ($d -ne $orig) {
+                  Set-Content $_.FullName -Value $d -Encoding UTF8
+                  Write-Host "OK: Dart bereinigt in $($_.Name)"
               }
           }
 
-          # 4. Großes PROCINÉ-Logo einbinden (height: 95, damit es deutlich größer erscheint)
+          # 4. Großes PROCINÉ-Logo einbinden (mit OverflowBox / SizedBox, damit die Eltern-Row es nicht staucht)
           if (-not (Test-Path "flutter/assets/brand_logo.png")) {
               Write-Error "FEHLER: flutter/assets/brand_logo.png wurde im Repository nicht gefunden!"
           }
-
           $pubspec = Get-Content "flutter/pubspec.yaml" -Raw -Encoding UTF8
           if ($pubspec -notmatch 'assets/brand_logo\.png') {
               $pubspec = $pubspec -replace '(assets:\s*\r?\n)', "`$1    - assets/brand_logo.png`r`n"
@@ -85,51 +95,11 @@ jobs:
               }
               if ($end -gt $start) {
                   $fullTextWidget = $ui.Substring($start, $end - $start + 1)
-                  $replacement = "Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(bottom: 12.0), child: Image.asset('assets/brand_logo.png', height: 95, fit: BoxFit.contain, alignment: Alignment.centerLeft)), $fullTextWidget])"
+                  $replacement = "Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(bottom: 14.0), child: Image.asset('assets/brand_logo.png', height: 110, fit: BoxFit.contain, alignment: Alignment.centerLeft)), $fullTextWidget])"
                   $ui = $ui.Remove($start, $end - $start + 1).Insert($start, $replacement)
                   Set-Content $homePage -Value $ui -Encoding UTF8
-                  Write-Host "OK: Großes Logo (height: 95) eingefügt."
+                  Write-Host "OK: Logo (height: 110) eingefügt."
               }
-          } else {
-              Write-Error "FEHLER: Your Desktop nicht in desktop_home_page.dart gefunden!"
-          }
-
-          # 5. Pinkes Update-Banner über den exakten RustDesk-Text ('new version of RustDesk available') finden und ausblenden
-          $bannerRemoved = $false
-          Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
-              $dartContent = Get-Content $_.FullName -Raw -Encoding UTF8
-              $bannerAnchor = [regex]::Match($dartContent, "new version of RustDesk available")
-              if ($bannerAnchor.Success) {
-                  Write-Host "TREFFER für Update-Banner in: $($_.FullName)"
-                  $before = $dartContent.Substring(0, $bannerAnchor.Index)
-                  $wrapperMatches = [regex]::Matches($before, "(Obx|Visibility|Container)\s*\(")
-                  for ($w = $wrapperMatches.Count - 1; $w -ge 0; $w--) {
-                      $wStart = $wrapperMatches[$w].Index
-                      $openParen = $dartContent.IndexOf('(', $wStart)
-                      $d = 0
-                      $wEnd = -1
-                      for ($j = $openParen; $j -lt $dartContent.Length; $j++) {
-                          if ($dartContent[$j] -eq '(') { $d++ }
-                          elseif ($dartContent[$j] -eq ')') {
-                              $d--
-                              if ($d -eq 0) { $wEnd = $j; break }
-                          }
-                      }
-                      if ($wEnd -gt $bannerAnchor.Index) {
-                          $snippet = $dartContent.Substring($wStart, $wEnd - $wStart + 1)
-                          if ($snippet -notmatch "Your Desktop" -and $snippet -notmatch "One-time Password") {
-                              $dartContent = $dartContent.Remove($wStart, $wEnd - $wStart + 1).Insert($wStart, "const SizedBox.shrink()")
-                              Set-Content $_.FullName -Value $dartContent -Encoding UTF8
-                              $bannerRemoved = $true
-                              Write-Host "OK: Pinkes Update-Banner in $($_.Name) komplett entfernt!"
-                              break
-                          }
-                      }
-                  }
-              }
-          }
-          if (-not $bannerRemoved) {
-              Write-Error "FEHLER: Update-Banner konnte nicht lokalisiert werden!"
           }
 
       - name: Install Build Tools
