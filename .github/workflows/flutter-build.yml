@@ -1,4 +1,4 @@
-name: Build the flutter version of the RustDesk
+name: Procine Remote Windows Build
 
 on:
   workflow_dispatch:
@@ -92,13 +92,12 @@ jobs:
               }
           }
 
-          # 5. Pinkes Update-Banner in allen Dart-Dateien finden und ausblenden + Diagnose ausgeben
+          # 5. Pinkes Update-Banner in allen Dart-Dateien finden und ausblenden
           $bannerRemoved = 0
           Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
               $dartContent = Get-Content $_.FullName -Raw -Encoding UTF8
               $dOrig = $dartContent
 
-              # Falls noch Future.value('') im Repo steht -> durch echten leeren String ersetzen
               $dartContent = $dartContent -replace "Future(?:<String>)?\.value\(''\)", "''"
               $dartContent = $dartContent -replace 'await\s+bind\.mainGetNewVersion\(\)', "''"
 
@@ -145,9 +144,19 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install vcpkg dependencies (Manifest Mode)
+        shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           & "$env:VCPKG_ROOT\vcpkg.exe" integrate install
-          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows-static
+
+          $mfxPort = "res/vcpkg/mfx-dispatch/portfile.cmake"
+          if (Test-Path $mfxPort) {
+              $portTxt = Get-Content $mfxPort -Raw -Encoding UTF8
+              Write-Host "Aktueller mfx-dispatch portfile Inhalt:"
+              Write-Host $portTxt
+          }
+
+          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows-static --overlay-ports=res/vcpkg
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
