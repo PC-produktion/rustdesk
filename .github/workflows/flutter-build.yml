@@ -115,7 +115,7 @@ jobs:
               $dart = $dart -replace "\$\{translate\(\s*['`"]Ready['`"]\s*\)\},\s*", "`${translate('Ready')}"
               $dart = $dart -replace "translate\(\s*['`"]Ready['`"]\s*\)\s*\+\s*['`"],\s*['`"]", "translate('Ready')"
 
-              # C) Pinkes UAC-/Installations-Banner entfernen (alle pinken Gradient-Boxen in desktop_home_page.dart)
+              # C) Pinkes UAC-/Installations-Banner entfernen
               if ($_.Name -eq "desktop_home_page.dart") {
                   $uacAnchor = [regex]::Match($dart, "(User Account Control|UAC|Due to User Account Control)")
                   while ($uacAnchor.Success) {
@@ -166,8 +166,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          if (Test-Path "res/vcpkg/mfx-dispatch") {
+              Remove-Item -Path "res/vcpkg/mfx-dispatch" -Recurse -Force
+          }
           & "$env:VCPKG_ROOT\vcpkg.exe" integrate install
-          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows-static --overlay-ports=res/vcpkg
+          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows-static
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
