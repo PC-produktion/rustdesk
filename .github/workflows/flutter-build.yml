@@ -162,31 +162,36 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force -Path "res/vcpkg/mfx-dispatch" | Out-Null
-          Set-Content -Path "res/vcpkg/mfx-dispatch/vcpkg.json" -Encoding UTF8 -Value @'
-          {
-            "name": "mfx-dispatch",
-            "version": "1.35.1",
-            "description": "Intel Media SDK dispatcher",
-            "dependencies": [
-              { "name": "vcpkg-cmake", "host": true },
-              { "name": "vcpkg-cmake-config", "host": true }
-            ]
-          }
-          '@
-          Set-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8 -Value @'
-          vcpkg_from_github(
-              OUT_SOURCE_PATH SOURCE_PATH
-              REPO lu-zero/mfx_dispatch
-              REF 1.35.1
-              SHA512 43d329e20581e1c5b3782c6466d6d200b919f9118886529a1e1650b608e3336e3b3f0e589e4797d22a666f1747120e3741d3c9956b162f604b39398f126a746c
-              HEAD_REF master
+
+          $vcpkgJson = @(
+              '{',
+              '  "name": "mfx-dispatch",',
+              '  "version": "1.35.1",',
+              '  "description": "Intel Media SDK dispatcher",',
+              '  "dependencies": [',
+              '    { "name": "vcpkg-cmake", "host": true },',
+              '    { "name": "vcpkg-cmake-config", "host": true }',
+              '  ]',
+              '}'
           )
-          vcpkg_cmake_configure(SOURCE_PATH "${SOURCE_PATH}")
-          vcpkg_cmake_install()
-          vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/mfx)
-          file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include" "${CURRENT_PACKAGES_DIR}/debug/share")
-          file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
-          '@
+          Set-Content -Path "res/vcpkg/mfx-dispatch/vcpkg.json" -Value $vcpkgJson -Encoding UTF8
+
+          $portfileCmake = @(
+              'vcpkg_from_github(',
+              '    OUT_SOURCE_PATH SOURCE_PATH',
+              '    REPO lu-zero/mfx_dispatch',
+              '    REF 1.35.1',
+              '    SHA512 43d329e20581e1c5b3782c6466d6d200b919f9118886529a1e1650b608e3336e3b3f0e589e4797d22a666f1747120e3741d3c9956b162f604b39398f126a746c',
+              '    HEAD_REF master',
+              ')',
+              'vcpkg_cmake_configure(SOURCE_PATH "${SOURCE_PATH}")',
+              'vcpkg_cmake_install()',
+              'vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/mfx)',
+              'file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include" "${CURRENT_PACKAGES_DIR}/debug/share")',
+              'file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)'
+          )
+          Set-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Value $portfileCmake -Encoding UTF8
+
           & "$env:VCPKG_ROOT\vcpkg.exe" integrate install
           & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows-static --overlay-ports=res/vcpkg
 
@@ -230,5 +235,4 @@ jobs:
       - name: Build Rust Engine and Flutter App
         shell: pwsh
         env:
-          RUSTFLAGS: '-L native=${{ github.workspace }}/vcpkg_installed/x64-windows-static/lib'
-          BINDGEN_EXTRA_CLANG_ARGS: '-I"${{ github.
+          RUSTFLAGS: '-L native=${{ github.workspace }}/vcpkg_installed/x64
