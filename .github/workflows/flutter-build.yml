@@ -25,16 +25,17 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          # 1. Produktname & Server/Key fest in src/common.rs einkompilieren
+          # 1. Produktname, AWS-Server & Public Key fest in src/common.rs einkompilieren
           $commonRs = "src/common.rs"
           if (Test-Path $commonRs) {
               $content = Get-Content $commonRs -Raw -Encoding UTF8
               $content = $content -replace '(APP_NAME\s*:\s*&str\s*=\s*)"RustDesk"', "`$1`"$env:CUSTOM_APP_NAME`""
               $content = $content -replace '(APP_NAME\s*=\s*)"RustDesk"', "`$1`"$env:CUSTOM_APP_NAME`""
               $content = $content -replace '(RENDEZVOUS_SERVERS\s*:\s*&\[&str\]\s*=\s*&\[)[^\]]*(\])', "`$1`"$env:RENDEZVOUS_SERVER`"`$2"
+              $content = $content -replace 'rs-ny\.rustdesk\.com', "$env:RENDEZVOUS_SERVER"
               $content = $content -replace '(RS_PUB_KEY\s*:\s*&str\s*=\s*)"[^"]*"', "`$1`"$env:RS_PUB_KEY`""
               Set-Content $commonRs -Value $content -Encoding UTF8
-              Write-Host "BUILD-V2 OK: Name, AWS-Server und Public Key fest in src/common.rs eingetragen."
+              Write-Host "OK: Name, AWS-Server und Public Key fest in src/common.rs eingetragen."
           }
 
           # 2. Windows Fenstertitel anpassen
@@ -45,7 +46,7 @@ jobs:
               Set-Content $mainCpp -Value $cpp -Encoding UTF8
           }
 
-          # 3. Update-URLs deaktivieren
+          # 3. Update-Check im Rust-Backend & in allen URLs komplett deaktivieren
           Get-ChildItem -Path "src", "flutter/lib" -Recurse -Include "*.rs", "*.dart" | ForEach-Object {
               $txt = Get-Content $_.FullName -Raw -Encoding UTF8
               $orig = $txt
@@ -53,9 +54,20 @@ jobs:
               $txt = $txt -replace 'https://rustdesk\.com/api/version', 'http://127.0.0.1:0/disabled'
               $txt = $txt -replace 'https://rustdesk\.com/api/latest', 'http://127.0.0.1:0/disabled'
               $txt = $txt -replace 'https://api\.rustdesk\.com/version/latest', 'http://127.0.0.1:0/disabled'
+              $txt = $txt -replace 'https://github\.com/rustdesk/rustdesk/releases/latest', 'http://127.0.0.1:0/disabled'
               if ($txt -ne $orig) {
                   Set-Content $_.FullName -Value $txt -Encoding UTF8
+                  Write-Host "OK: Update-URL deaktiviert in $($_.Name)"
               }
+          }
+
+          # In src/flutter_ffi.rs main_get_new_version auf leeren String zwingen
+          $ffiRs = "src/flutter_ffi.rs"
+          if (Test-Path $ffiRs) {
+              $ffi = Get-Content $ffiRs -Raw -Encoding UTF8
+              $ffi = [regex]::Replace($ffi, '(pub\s+fn\s+main_get_new_version\s*\([^)]*\)\s*->\s*String\s*\{)[\s\S]*?(\n\})', "`$1`r`n    String::new()`$2")
+              Set-Content $ffiRs -Value $ffi -Encoding UTF8
+              Write-Host "OK: main_get_new_version in src/flutter_ffi.rs auf leeren String gesetzt."
           }
 
           # 4. Großes PROCINÉ-Logo über volle Spaltenbreite (width: 200, fitWidth) einbinden
@@ -88,12 +100,11 @@ jobs:
                   $replacement = "Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(bottom: 14.0), child: SizedBox(width: 200, child: Image.asset('assets/brand_logo.png', fit: BoxFit.fitWidth))), $fullTextWidget])"
                   $ui = $ui.Remove($start, $end - $start + 1).Insert($start, $replacement)
                   Set-Content $homePage -Value $ui -Encoding UTF8
-                  Write-Host "BUILD-V2 OK: Großes Logo (width: 200, fitWidth) eingefügt."
+                  Write-Host "OK: Großes Logo (width: 200, fitWidth) eingefügt."
               }
           }
 
-          # 5. Pinkes Update-Banner in allen Dart-Dateien finden und ausblenden
-          $bannerRemoved = 0
+          # 5. Pinkes Update-Banner in Dart-Dateien suchen und ausblenden
           Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
               $dartContent = Get-Content $_.FullName -Raw -Encoding UTF8
               $dOrig = $dartContent
@@ -103,7 +114,6 @@ jobs:
 
               $bannerAnchor = [regex]::Match($dartContent, "new version of RustDesk available")
               if ($bannerAnchor.Success) {
-                  Write-Host "BUILD-V2 TREFFER Update-Text in: $($_.FullName)"
                   $before = $dartContent.Substring(0, $bannerAnchor.Index)
                   $wrapperMatches = [regex]::Matches($before, "(Obx|Visibility|Container)\s*\(")
                   for ($w = $wrapperMatches.Count - 1; $w -ge 0; $w--) {
@@ -122,8 +132,7 @@ jobs:
                           $snippet = $dartContent.Substring($wStart, $wEnd - $wStart + 1)
                           if ($snippet -notmatch "Your Desktop" -and $snippet -notmatch "One-time Password") {
                               $dartContent = $dartContent.Remove($wStart, $wEnd - $wStart + 1).Insert($wStart, "const SizedBox.shrink()")
-                              $bannerRemoved++
-                              Write-Host "BUILD-V2 OK: Pinkes Update-Banner in $($_.Name) komplett entfernt!"
+                              Write-Host "OK: Pinkes Update-Banner in $($_.Name) komplett entfernt!"
                               break
                           }
                       }
@@ -134,7 +143,6 @@ jobs:
                   Set-Content $_.FullName -Value $dartContent -Encoding UTF8
               }
           }
-          Write-Host "BUILD-V2 Zusammenfassung: $bannerRemoved Banner-Widgets entfernt."
 
       - name: Install Build Tools
         run: |
@@ -148,14 +156,6 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           & "$env:VCPKG_ROOT\vcpkg.exe" integrate install
-
-          $mfxPort = "res/vcpkg/mfx-dispatch/portfile.cmake"
-          if (Test-Path $mfxPort) {
-              $portTxt = Get-Content $mfxPort -Raw -Encoding UTF8
-              Write-Host "Aktueller mfx-dispatch portfile Inhalt:"
-              Write-Host $portTxt
-          }
-
           & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows-static --overlay-ports=res/vcpkg
 
       - name: Install Flutter
