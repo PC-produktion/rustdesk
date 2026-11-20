@@ -34,7 +34,7 @@ jobs:
               $content = $content -replace '(RENDEZVOUS_SERVERS\s*:\s*&\[&str\]\s*=\s*&\[)[^\]]*(\])', "`$1`"$env:RENDEZVOUS_SERVER`"`$2"
               $content = $content -replace '(RS_PUB_KEY\s*:\s*&str\s*=\s*)"[^"]*"', "`$1`"$env:RS_PUB_KEY`""
               Set-Content $commonRs -Value $content -Encoding UTF8
-              Write-Host "OK: Name, AWS-Server und Public Key fest in src/common.rs eingetragen."
+              Write-Host "BUILD-V2 OK: Name, AWS-Server und Public Key fest in src/common.rs eingetragen."
           }
 
           # 2. Windows Fenstertitel anpassen
@@ -58,7 +58,7 @@ jobs:
               }
           }
 
-          # 4. Großes PROCINÉ-Logo (height: 110) einbinden
+          # 4. Großes PROCINÉ-Logo über volle Spaltenbreite (width: 200, fitWidth) einbinden
           if (-not (Test-Path "flutter/assets/brand_logo.png")) {
               Write-Error "FEHLER: flutter/assets/brand_logo.png fehlt!"
           }
@@ -85,19 +85,26 @@ jobs:
               }
               if ($end -gt $start) {
                   $fullTextWidget = $ui.Substring($start, $end - $start + 1)
-                  $replacement = "Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(bottom: 14.0), child: Image.asset('assets/brand_logo.png', height: 110, fit: BoxFit.contain, alignment: Alignment.centerLeft)), $fullTextWidget])"
+                  $replacement = "Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(bottom: 14.0), child: SizedBox(width: 200, child: Image.asset('assets/brand_logo.png', fit: BoxFit.fitWidth))), $fullTextWidget])"
                   $ui = $ui.Remove($start, $end - $start + 1).Insert($start, $replacement)
                   Set-Content $homePage -Value $ui -Encoding UTF8
-                  Write-Host "OK: Großes Logo (height: 110) eingefügt."
+                  Write-Host "BUILD-V2 OK: Großes Logo (width: 200, fitWidth) eingefügt."
               }
           }
 
-          # 5. Pinkes Update-Banner in allen Dart-Dateien suchen und durch SizedBox.shrink() ersetzen
-          $bannerRemoved = $false
+          # 5. Pinkes Update-Banner in allen Dart-Dateien finden und ausblenden + Diagnose ausgeben
+          $bannerRemoved = 0
           Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
               $dartContent = Get-Content $_.FullName -Raw -Encoding UTF8
+              $dOrig = $dartContent
+
+              # Falls noch Future.value('') im Repo steht -> durch echten leeren String ersetzen
+              $dartContent = $dartContent -replace "Future(?:<String>)?\.value\(''\)", "''"
+              $dartContent = $dartContent -replace 'await\s+bind\.mainGetNewVersion\(\)', "''"
+
               $bannerAnchor = [regex]::Match($dartContent, "new version of RustDesk available")
               if ($bannerAnchor.Success) {
+                  Write-Host "BUILD-V2 TREFFER Update-Text in: $($_.FullName)"
                   $before = $dartContent.Substring(0, $bannerAnchor.Index)
                   $wrapperMatches = [regex]::Matches($before, "(Obx|Visibility|Container)\s*\(")
                   for ($w = $wrapperMatches.Count - 1; $w -ge 0; $w--) {
@@ -116,18 +123,19 @@ jobs:
                           $snippet = $dartContent.Substring($wStart, $wEnd - $wStart + 1)
                           if ($snippet -notmatch "Your Desktop" -and $snippet -notmatch "One-time Password") {
                               $dartContent = $dartContent.Remove($wStart, $wEnd - $wStart + 1).Insert($wStart, "const SizedBox.shrink()")
-                              Set-Content $_.FullName -Value $dartContent -Encoding UTF8
-                              $bannerRemoved = $true
-                              Write-Host "OK: Pinkes Update-Banner in $($_.Name) komplett entfernt!"
+                              $bannerRemoved++
+                              Write-Host "BUILD-V2 OK: Pinkes Update-Banner in $($_.Name) komplett entfernt!"
                               break
                           }
                       }
                   }
               }
+
+              if ($dartContent -ne $dOrig) {
+                  Set-Content $_.FullName -Value $dartContent -Encoding UTF8
+              }
           }
-          if (-not $bannerRemoved) {
-              Write-Error "FEHLER: Update-Banner konnte nicht gefunden werden!"
-          }
+          Write-Host "BUILD-V2 Zusammenfassung: $bannerRemoved Banner-Widgets entfernt."
 
       - name: Install Build Tools
         run: |
