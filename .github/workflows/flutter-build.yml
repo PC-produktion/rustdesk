@@ -175,7 +175,9 @@ jobs:
           "set(SOURCE_PATH `"$mfxSrcPath`")" | Set-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
           'vcpkg_cmake_configure(SOURCE_PATH "${SOURCE_PATH}")' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
           'vcpkg_cmake_install()' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
-          'vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/mfx)' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
+          'if(EXISTS "${CURRENT_PACKAGES_DIR}/lib/pkgconfig")' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
+          '  vcpkg_fixup_pkgconfig()' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
+          'endif()' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
           'file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include" "${CURRENT_PACKAGES_DIR}/debug/share")' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
           'if(EXISTS "${SOURCE_PATH}/LICENSE")' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
           '  file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
