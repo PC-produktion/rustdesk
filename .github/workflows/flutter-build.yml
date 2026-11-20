@@ -20,7 +20,7 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Apply Final Branding, Server, Large Logo & Remove Banner
+      - name: Apply Final Branding, Server, Large Logo & Remove Banners
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -48,7 +48,7 @@ jobs:
               Set-Content $mainCpp -Value $cpp -Encoding UTF8
           }
 
-          # 3. Update-Check im gesamten Rust-Backend (src & libs) und Dart komplett abschalten
+          # 3. Update-Checks in Rust & Dart komplett abschalten
           Get-ChildItem -Path "src", "libs", "flutter/lib" -Recurse -Include "*.rs", "*.dart" -ErrorAction SilentlyContinue | ForEach-Object {
               $txt = Get-Content $_.FullName -Raw -Encoding UTF8
               $orig = $txt
@@ -59,20 +59,10 @@ jobs:
               $txt = $txt -replace 'https://github\.com/rustdesk/rustdesk/releases/latest', 'http://127.0.0.1:0/disabled'
               if ($txt -ne $orig) {
                   Set-Content $_.FullName -Value $txt -Encoding UTF8
-                  Write-Host "OK: Update-URL deaktiviert in $($_.Name)"
               }
           }
 
-          # In src/flutter_ffi.rs main_get_new_version auf leeren String zwingen
-          $ffiRs = "src/flutter_ffi.rs"
-          if (Test-Path $ffiRs) {
-              $ffi = Get-Content $ffiRs -Raw -Encoding UTF8
-              $ffi = [regex]::Replace($ffi, '(pub\s+fn\s+main_get_new_version\s*\([^)]*\)\s*->\s*String\s*\{)[\s\S]*?(\n\})', "`$1`r`n    String::new()`$2")
-              Set-Content $ffiRs -Value $ffi -Encoding UTF8
-              Write-Host "OK: main_get_new_version in src/flutter_ffi.rs deaktiviert."
-          }
-
-          # 4. Großes PROCINÉ-Logo über volle Spaltenbreite (width: 200, fitWidth) einbinden
+          # 4. Großes PROCINÉ-Logo einbinden
           if (-not (Test-Path "flutter/assets/brand_logo.png")) {
               Write-Error "FEHLER: flutter/assets/brand_logo.png fehlt!"
           }
@@ -102,51 +92,30 @@ jobs:
                   $replacement = "Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(bottom: 14.0), child: SizedBox(width: 200, child: Image.asset('assets/brand_logo.png', fit: BoxFit.fitWidth))), $fullTextWidget])"
                   $ui = $ui.Remove($start, $end - $start + 1).Insert($start, $replacement)
                   Set-Content $homePage -Value $ui -Encoding UTF8
-                  Write-Host "OK: Großes Logo (width: 200, fitWidth) eingefügt."
+                  Write-Host "OK: Großes Logo (width: 200) eingefügt."
               }
           }
 
-          # 5. Pinkes Update-Banner in ALLEN Dart-Dateien aufspüren und entfernen
+          # 5. Pinkes Update-Banner UND unteren Server-Hinweis ("setup your own server") im Flutter-UI dauerhaft deaktivieren
           Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
-              $dartContent = Get-Content $_.FullName -Raw -Encoding UTF8
-              $dOrig = $dartContent
+              $dart = Get-Content $_.FullName -Raw -Encoding UTF8
+              $dOrig = $dart
 
-              $dartContent = $dartContent -replace "Future(?:<String>)?\.value\(''\)", "''"
-              $dartContent = $dartContent -replace 'await\s+bind\.mainGetNewVersion\(\)', "''"
-              $dartContent = $dartContent -replace 'bind\.mainGetNewVersion\(\)', "Future.value('')"
-              $dartContent = $dartContent -replace 'newVersion\.value\s*=\s*[^;]+;', "newVersion.value = '';"
+              # A) Alle Update-Version-Abfragen im Dart-Code dauerhaft auf leer setzen -> pinkes Banner wird nie gerendert
+              $dart = $dart -replace 'newVersion\.isNotEmpty', 'false'
+              $dart = $dart -replace 'newVersion\.value\.isNotEmpty', 'false'
+              $dart = $dart -replace 'stateGlobal\.newVersion\.value\.isNotEmpty', 'false'
+              $dart = $dart -replace "Future(?:<String>)?\.value\(''\)", "''"
+              $dart = $dart -replace 'await\s+bind\.mainGetNewVersion\(\)', "''"
+              $dart = $dart -replace 'bind\.mainGetNewVersion\(\)', "Future.value('')"
 
-              # Suche nach allen bekannten RustDesk Update-Banner-Texten (z. B. "There is a new version of" oder "new version of RustDesk available")
-              $bannerAnchor = [regex]::Match($dartContent, "(There is a new version of|new version of RustDesk available)")
-              if ($bannerAnchor.Success) {
-                  Write-Host "TREFFER Update-Banner-Text in: $($_.FullName)"
-                  $before = $dartContent.Substring(0, $bannerAnchor.Index)
-                  $wrapperMatches = [regex]::Matches($before, "(Obx|Visibility|Container)\s*\(")
-                  for ($w = $wrapperMatches.Count - 1; $w -ge 0; $w--) {
-                      $wStart = $wrapperMatches[$w].Index
-                      $openParen = $dartContent.IndexOf('(', $wStart)
-                      $d = 0
-                      $wEnd = -1
-                      for ($j = $openParen; $j -lt $dartContent.Length; $j++) {
-                          if ($dartContent[$j] -eq '(') { $d++ }
-                          elseif ($dartContent[$j] -eq ')') {
-                              $d--
-                              if ($d -eq 0) { $wEnd = $j; break }
-                          }
-                      }
-                      if ($wEnd -gt $bannerAnchor.Index) {
-                          $snippet = $dartContent.Substring($wStart, $wEnd - $wStart + 1)
-                          if ($snippet -notmatch "Your Desktop" -and $snippet -notmatch "One-time Password") {
-                              $dartContent = $dartContent.Remove($wStart, $wEnd - $wStart + 1).Insert($wStart, "const SizedBox.shrink()")
-                              Write-Host "OK: Pinkes Update-Banner in $($_.Name) komplett entfernt!"
-                              break
-                          }
-                      }
-                  }
-              }
+              # B) Unteren Hinweis "for faster connection, please setup your own server" komplett ausblenden
+              $dart = $dart -replace "translate\(\s*['`"]for faster connection, please setup your own server['`"]\s*\)", "''"
+              $dart = $dart -replace "translate\(\s*['`"]setup_server_tip['`"]\s*\)", "''"
 
-              if ($dartContent -ne $dOrig) {
-                  Set-Content $_.FullName -Value $dartContent -Encoding UTF8
+              if ($dart -ne $dOrig) {
+                  Set-Content $_.FullName -Value $dart -Encoding UTF8
+                  Write-Host "OK: Update-Banner / Server-Hinweis in $($_.Name) deaktiviert."
               }
           }
 
