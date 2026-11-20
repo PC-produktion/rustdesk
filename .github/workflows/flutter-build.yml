@@ -25,7 +25,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          # 1. Produktname, AWS-Server & Public Key in src/ UND libs/hbb_common/ einkompilieren
+          # 1. Produktname, AWS-Server & Public Key in src/ UND libs/ einkompilieren
           Get-ChildItem -Path "src", "libs" -Recurse -Include "*.rs" -ErrorAction SilentlyContinue | ForEach-Object {
               $content = Get-Content $_.FullName -Raw -Encoding UTF8
               $orig = $content
@@ -96,12 +96,12 @@ jobs:
               }
           }
 
-          # 5. Pinkes Update-Banner UND unteren Server-Hinweis ("setup your own server") im Flutter-UI dauerhaft deaktivieren
+          # 5. Update-Banner, UAC-Install-Banner UND Komma nach "Bereit" im Flutter-UI entfernen
           Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
               $dart = Get-Content $_.FullName -Raw -Encoding UTF8
               $dOrig = $dart
 
-              # A) Alle Update-Version-Abfragen im Dart-Code dauerhaft auf leer setzen -> pinkes Banner wird nie gerendert
+              # A) Update-Banner deaktivieren
               $dart = $dart -replace 'newVersion\.isNotEmpty', 'false'
               $dart = $dart -replace 'newVersion\.value\.isNotEmpty', 'false'
               $dart = $dart -replace 'stateGlobal\.newVersion\.value\.isNotEmpty', 'false'
@@ -109,13 +109,49 @@ jobs:
               $dart = $dart -replace 'await\s+bind\.mainGetNewVersion\(\)', "''"
               $dart = $dart -replace 'bind\.mainGetNewVersion\(\)', "Future.value('')"
 
-              # B) Unteren Hinweis "for faster connection, please setup your own server" komplett ausblenden
+              # B) Unteren Server-Hinweis & Komma nach "Ready" ("Bereit,") entfernen
               $dart = $dart -replace "translate\(\s*['`"]for faster connection, please setup your own server['`"]\s*\)", "''"
               $dart = $dart -replace "translate\(\s*['`"]setup_server_tip['`"]\s*\)", "''"
+              $dart = $dart -replace "\$\{translate\(\s*['`"]Ready['`"]\s*\)\},\s*", "`${translate('Ready')}"
+              $dart = $dart -replace "translate\(\s*['`"]Ready['`"]\s*\)\s*\+\s*['`"],\s*['`"]", "translate('Ready')"
+
+              # C) Pinkes UAC-/Installations-Banner entfernen (alle pinken Gradient-Boxen in desktop_home_page.dart)
+              if ($_.Name -eq "desktop_home_page.dart") {
+                  $uacAnchor = [regex]::Match($dart, "(User Account Control|UAC|Due to User Account Control)")
+                  while ($uacAnchor.Success) {
+                      $before = $dart.Substring(0, $uacAnchor.Index)
+                      $wrapperMatches = [regex]::Matches($before, "(Obx|Visibility|Container)\s*\(")
+                      $removed = $false
+                      for ($w = $wrapperMatches.Count - 1; $w -ge 0; $w--) {
+                          $wStart = $wrapperMatches[$w].Index
+                          $openParen = $dart.IndexOf('(', $wStart)
+                          $d = 0
+                          $wEnd = -1
+                          for ($j = $openParen; $j -lt $dart.Length; $j++) {
+                              if ($dart[$j] -eq '(') { $d++ }
+                              elseif ($dart[$j] -eq ')') {
+                                  $d--
+                                  if ($d -eq 0) { $wEnd = $j; break }
+                              }
+                          }
+                          if ($wEnd -gt $uacAnchor.Index) {
+                              $snippet = $dart.Substring($wStart, $wEnd - $wStart + 1)
+                              if ($snippet -notmatch "Your Desktop" -and $snippet -notmatch "One-time Password") {
+                                  $dart = $dart.Remove($wStart, $wEnd - $wStart + 1).Insert($wStart, "const SizedBox.shrink()")
+                                  Write-Host "OK: Pinkes UAC-/Installations-Banner in $($_.Name) komplett entfernt!"
+                                  $removed = $true
+                                  break
+                              }
+                          }
+                      }
+                      if (-not $removed) { break }
+                      $uacAnchor = [regex]::Match($dart, "(User Account Control|UAC|Due to User Account Control)")
+                  }
+              }
 
               if ($dart -ne $dOrig) {
                   Set-Content $_.FullName -Value $dart -Encoding UTF8
-                  Write-Host "OK: Update-Banner / Server-Hinweis in $($_.Name) deaktiviert."
+                  Write-Host "OK: Bereinigung durchgeführt in $($_.Name)."
               }
           }
 
