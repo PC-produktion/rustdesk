@@ -25,17 +25,19 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          # 1. Produktname, AWS-Server & Public Key fest in src/common.rs einkompilieren
-          $commonRs = "src/common.rs"
-          if (Test-Path $commonRs) {
-              $content = Get-Content $commonRs -Raw -Encoding UTF8
+          # 1. Produktname, AWS-Server & Public Key in src/ UND libs/hbb_common/ einkompilieren
+          Get-ChildItem -Path "src", "libs" -Recurse -Include "*.rs" -ErrorAction SilentlyContinue | ForEach-Object {
+              $content = Get-Content $_.FullName -Raw -Encoding UTF8
+              $orig = $content
               $content = $content -replace '(APP_NAME\s*:\s*&str\s*=\s*)"RustDesk"', "`$1`"$env:CUSTOM_APP_NAME`""
               $content = $content -replace '(APP_NAME\s*=\s*)"RustDesk"', "`$1`"$env:CUSTOM_APP_NAME`""
               $content = $content -replace '(RENDEZVOUS_SERVERS\s*:\s*&\[&str\]\s*=\s*&\[)[^\]]*(\])', "`$1`"$env:RENDEZVOUS_SERVER`"`$2"
               $content = $content -replace 'rs-ny\.rustdesk\.com', "$env:RENDEZVOUS_SERVER"
               $content = $content -replace '(RS_PUB_KEY\s*:\s*&str\s*=\s*)"[^"]*"', "`$1`"$env:RS_PUB_KEY`""
-              Set-Content $commonRs -Value $content -Encoding UTF8
-              Write-Host "OK: Name, AWS-Server und Public Key fest in src/common.rs eingetragen."
+              if ($content -ne $orig) {
+                  Set-Content $_.FullName -Value $content -Encoding UTF8
+                  Write-Host "OK: Server/Key/Name aktualisiert in $($_.FullName)"
+              }
           }
 
           # 2. Windows Fenstertitel anpassen
@@ -46,8 +48,8 @@ jobs:
               Set-Content $mainCpp -Value $cpp -Encoding UTF8
           }
 
-          # 3. Update-Check im Rust-Backend & in allen URLs komplett deaktivieren
-          Get-ChildItem -Path "src", "flutter/lib" -Recurse -Include "*.rs", "*.dart" | ForEach-Object {
+          # 3. Update-Check im gesamten Rust-Backend (src & libs) und Dart komplett abschalten
+          Get-ChildItem -Path "src", "libs", "flutter/lib" -Recurse -Include "*.rs", "*.dart" -ErrorAction SilentlyContinue | ForEach-Object {
               $txt = Get-Content $_.FullName -Raw -Encoding UTF8
               $orig = $txt
               $txt = $txt -replace 'https://api\.github\.com/repos/rustdesk/rustdesk/releases/latest', 'http://127.0.0.1:0/disabled'
@@ -67,7 +69,7 @@ jobs:
               $ffi = Get-Content $ffiRs -Raw -Encoding UTF8
               $ffi = [regex]::Replace($ffi, '(pub\s+fn\s+main_get_new_version\s*\([^)]*\)\s*->\s*String\s*\{)[\s\S]*?(\n\})', "`$1`r`n    String::new()`$2")
               Set-Content $ffiRs -Value $ffi -Encoding UTF8
-              Write-Host "OK: main_get_new_version in src/flutter_ffi.rs auf leeren String gesetzt."
+              Write-Host "OK: main_get_new_version in src/flutter_ffi.rs deaktiviert."
           }
 
           # 4. Großes PROCINÉ-Logo über volle Spaltenbreite (width: 200, fitWidth) einbinden
@@ -104,16 +106,20 @@ jobs:
               }
           }
 
-          # 5. Pinkes Update-Banner in Dart-Dateien suchen und ausblenden
+          # 5. Pinkes Update-Banner in ALLEN Dart-Dateien aufspüren und entfernen
           Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
               $dartContent = Get-Content $_.FullName -Raw -Encoding UTF8
               $dOrig = $dartContent
 
               $dartContent = $dartContent -replace "Future(?:<String>)?\.value\(''\)", "''"
               $dartContent = $dartContent -replace 'await\s+bind\.mainGetNewVersion\(\)', "''"
+              $dartContent = $dartContent -replace 'bind\.mainGetNewVersion\(\)', "Future.value('')"
+              $dartContent = $dartContent -replace 'newVersion\.value\s*=\s*[^;]+;', "newVersion.value = '';"
 
-              $bannerAnchor = [regex]::Match($dartContent, "new version of RustDesk available")
+              # Suche nach allen bekannten RustDesk Update-Banner-Texten (z. B. "There is a new version of" oder "new version of RustDesk available")
+              $bannerAnchor = [regex]::Match($dartContent, "(There is a new version of|new version of RustDesk available)")
               if ($bannerAnchor.Success) {
+                  Write-Host "TREFFER Update-Banner-Text in: $($_.FullName)"
                   $before = $dartContent.Substring(0, $bannerAnchor.Index)
                   $wrapperMatches = [regex]::Matches($before, "(Obx|Visibility|Container)\s*\(")
                   for ($w = $wrapperMatches.Count - 1; $w -ge 0; $w--) {
