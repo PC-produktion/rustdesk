@@ -24,10 +24,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          $utf8 = New-Object System.Text.UTF8Encoding($false)
 
           # 1. Produktname, AWS-Server & Public Key in src/ UND libs/ einkompilieren
           Get-ChildItem -Path "src", "libs" -Recurse -Include "*.rs" -ErrorAction SilentlyContinue | ForEach-Object {
-              $content = Get-Content -Path $_.FullName -Raw -Encoding UTF8
+              $content = [System.IO.File]::ReadAllText($_.FullName, $utf8)
               $orig = $content
               $content = $content -replace '(APP_NAME\s*:\s*&str\s*=\s*)"RustDesk"', "`$1`"$env:CUSTOM_APP_NAME`""
               $content = $content -replace '(APP_NAME\s*=\s*)"RustDesk"', "`$1`"$env:CUSTOM_APP_NAME`""
@@ -35,22 +36,21 @@ jobs:
               $content = $content -replace 'rs-ny\.rustdesk\.com', "$env:RENDEZVOUS_SERVER"
               $content = $content -replace '(RS_PUB_KEY\s*:\s*&str\s*=\s*)"[^"]*"', "`$1`"$env:RS_PUB_KEY`""
               if ($content -ne$orig) {
-                  Set-Content -Path $_.FullName -Value$content -Encoding UTF8
+                  [System.IO.File]::WriteAllText($_.FullName, $content,$utf8)
                   Write-Host "OK: Server/Key/Name aktualisiert in $($_.FullName)"
               }
           }
 
           # 2. Windows Fenstertitel anpassen
           $mainCpp = "flutter/windows/runner/main.cpp"
-          if (Test-Path $mainCpp) {
-              $cpp = Get-Content -Path$mainCpp -Raw -Encoding UTF8
+          if (Test-Path $mainCpp) {$cpp = [System.IO.File]::ReadAllText((Resolve-Path $mainCpp).Path, $utf8)
               $cpp =$cpp -replace 'L"RustDesk"', "L`"$env:CUSTOM_APP_NAME`""
-              Set-Content -Path $mainCpp -Value$cpp -Encoding UTF8
+              [System.IO.File]::WriteAllText((Resolve-Path $mainCpp).Path, $cpp,$utf8)
           }
 
           # 3. Update-Checks in Rust & Dart komplett abschalten
           Get-ChildItem -Path "src", "libs", "flutter/lib" -Recurse -Include "*.rs", "*.dart" -ErrorAction SilentlyContinue | ForEach-Object {
-              $txt = Get-Content -Path$_.FullName -Raw -Encoding UTF8
+              $txt = [System.IO.File]::ReadAllText($_.FullName, $utf8)
               $orig =$txt
               $txt =$txt -replace 'https://api\.github\.com/repos/rustdesk/rustdesk/releases/latest', 'http://127.0.0.1:0/disabled'
               $txt =$txt -replace 'https://rustdesk\.com/api/version', 'http://127.0.0.1:0/disabled'
@@ -58,7 +58,7 @@ jobs:
               $txt =$txt -replace 'https://api\.rustdesk\.com/version/latest', 'http://127.0.0.1:0/disabled'
               $txt =$txt -replace 'https://github\.com/rustdesk/rustdesk/releases/latest', 'http://127.0.0.1:0/disabled'
               if ($txt -ne$orig) {
-                  Set-Content -Path $_.FullName -Value$txt -Encoding UTF8
+                  [System.IO.File]::WriteAllText($_.FullName, $txt,$utf8)
               }
           }
 
@@ -66,14 +66,15 @@ jobs:
           if (-not (Test-Path "flutter/assets/brand_logo.png")) {
               Write-Error "FEHLER: flutter/assets/brand_logo.png fehlt!"
           }
-          $pubspec = Get-Content -Path "flutter/pubspec.yaml" -Raw -Encoding UTF8
+          $pubspecPath = (Resolve-Path "flutter/pubspec.yaml").Path
+          $pubspec = [System.IO.File]::ReadAllText($pubspecPath,$utf8)
           if ($pubspec -notmatch 'assets/brand_logo\.png') {
               $pubspec =$pubspec -replace '(assets:\s*\r?\n)', "`$1    - assets/brand_logo.png`r`n"
-              Set-Content -Path "flutter/pubspec.yaml" -Value $pubspec -Encoding UTF8
+              [System.IO.File]::WriteAllText($pubspecPath, $pubspec, $utf8)
           }
 
-          $homePage = "flutter/lib/desktop/pages/desktop_home_page.dart"
-          $ui = Get-Content -Path $homePage -Raw -Encoding UTF8
+          $homePagePath = (Resolve-Path "flutter/lib/desktop/pages/desktop_home_page.dart").Path
+          $ui = [System.IO.File]::ReadAllText($homePagePath, $utf8)
           $m = [regex]::Match($ui, "Text\(\s*translate\(['`"]Your Desktop['`"]\)")
           if ($m.Success) {
               $start = $m.Index
@@ -91,14 +92,14 @@ jobs:
                   $fullTextWidget = $ui.Substring($start, $end - $start + 1)
                   $replacement = "Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(bottom: 14.0), child: SizedBox(width: 200, child: Image.asset('assets/brand_logo.png', fit: BoxFit.fitWidth))), $fullTextWidget])"
                   $ui = $ui.Remove($start, $end - $start + 1).Insert($start, $replacement)
-                  Set-Content -Path $homePage -Value $ui -Encoding UTF8
+                  [System.IO.File]::WriteAllText($homePagePath, $ui, $utf8)
                   Write-Host "OK: Großes Logo (width: 200) eingefügt."
               }
           }
 
           # 5. ALLE pinken Banner & Komma nach "Bereit" in GESAMT flutter/lib finden und bereinigen
           Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
-              $dart = Get-Content -Path $_.FullName -Raw -Encoding UTF8
+              $dart = [System.IO.File]::ReadAllText($_.FullName, $utf8)
               $dOrig = $dart
               $isLangFile = $_.FullName -match "[\\/]langs[\\/]"
 
@@ -116,7 +117,6 @@ jobs:
               if (-not $isLangFile) {
                   if ($dart -match "(setup_server_tip|for faster connection)") {
                       Write-Host "TREFFER Status-Leiste in: $($_.FullName)"
-                      # Entferne das ', ' unmittelbar vor setup_server_tip / for faster connection
                       $dart = [regex]::Replace($dart, "(['`"]),\s*\1(\s*,\s*[^\n]*(?:setup_server_tip|for faster connection))", "`$1`$1`$2")
                       $dart = [regex]::Replace($dart, "(\$\{translate\(['`"]Ready['`"]\)\}),\s*", "`$1")
                       $dart = [regex]::Replace($dart, "(translate\(['`"]Ready['`"]\)\s*\+\s*['`"]),\s*(['`"])", "translate('Ready')")
@@ -155,7 +155,7 @@ jobs:
               }
 
               if ($dart -ne$dOrig) {
-                  Set-Content -Path $_.FullName -Value$dart -Encoding UTF8
+                  [System.IO.File]::WriteAllText($_.FullName, $dart,$utf8)
                   Write-Host "OK: Bereinigung durchgeführt in $($_.Name)."
               }
           }
@@ -171,100 +171,4 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          if (Test-Path "mfx_src") { Remove-Item -Path "mfx_src" -Recurse -Force }
-          git clone --depth 1 https://github.com/lu-zero/mfx_dispatch.git mfx_src
-          $mfxSrcPath = (Resolve-Path "mfx_src").Path -replace '\\', '/'
-
-          New-Item -ItemType Directory -Force -Path "res/vcpkg/mfx-dispatch" | Out-Null
-          '{"name":"mfx-dispatch","version":"1.35.1","description":"Intel Media SDK dispatcher","dependencies":[{"name":"vcpkg-cmake","host":true},{"name":"vcpkg-cmake-config","host":true}]}' | Set-Content -Path "res/vcpkg/mfx-dispatch/vcpkg.json" -Encoding UTF8
-          "set(SOURCE_PATH `"$mfxSrcPath`")" | Set-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
-          'vcpkg_cmake_configure(SOURCE_PATH "${SOURCE_PATH}")' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
-          'vcpkg_cmake_install()' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
-          'if(EXISTS "${CURRENT_PACKAGES_DIR}/lib/pkgconfig")' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
-          '  vcpkg_fixup_pkgconfig()' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
-          'endif()' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
-          'file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include" "${CURRENT_PACKAGES_DIR}/debug/share")' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
-          'if(EXISTS "${SOURCE_PATH}/LICENSE")' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
-          '  file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
-          'endif()' | Add-Content -Path "res/vcpkg/mfx-dispatch/portfile.cmake" -Encoding UTF8
-
-          & "$env:VCPKG_ROOT\vcpkg.exe" integrate install
-          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows-static --overlay-ports=res/vcpkg
-
-      - name: Install Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: "stable"
-          flutter-version: "3.24.0"
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Install flutter_rust_bridge_codegen
-        run: cargo install flutter_rust_bridge_codegen --version 1.80.1
-
-      - name: Locate and Build WindowInjection.dll
-        shell: pwsh
-        run: |
-          $proj = Get-ChildItem -Recurse -Filter "*WindowInjection*.vcxproj" | Select-Object -First 1
-          if ($proj) {
-              msbuild $proj.FullName /p:Configuration=Release /p:Platform=x64
-          }
-          $cmakeDir = Get-ChildItem -Recurse -Directory -Filter "*WindowInjection*" | Select-Object -First 1
-          if ($cmakeDir -and (Test-Path "$($cmakeDir.FullName)\CMakeLists.txt")) {
-              cmake -S $cmakeDir.FullName -B "$($cmakeDir.FullName)\build" -A x64
-              cmake --build "$($cmakeDir.FullName)\build" --config Release
-          }
-
-      - name: Prepare Flutter Dependencies
-        run: |
-          cd flutter
-          flutter pub get
-
-      - name: Generate Bridge Code
-        run: |
-          cd flutter
-          flutter_rust_bridge_codegen --rust-input ../src/flutter_ffi.rs --dart-output lib/generated_bridge.dart
-
-      - name: Build Rust Engine and Flutter App
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $ws = (Get-Location).Path -replace '\\', '/'$env:RUSTFLAGS = "-L native=$ws/vcpkg_installed/x64-windows-static/lib"
-          $env:BINDGEN_EXTRA_CLANG_ARGS = "-I`"$ws/vcpkg_installed/x64-windows-static/include`" -target x86_64-pc-windows-msvc"
-
-          cargo build --release --lib --features flutter
-          if ($LASTEXITCODE -ne 0) { exit$LASTEXITCODE }
-
-          Set-Location flutter
-          flutter build windows --release
-          if ($LASTEXITCODE -ne 0) { exit$LASTEXITCODE }
-
-      - name: Bundle Executable & DLLs
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          if (Test-Path "release_dist") { Remove-Item -Path "release_dist" -Recurse -Force }
-          New-Item -ItemType Directory -Force -Path release_dist | Out-Null
-
-          if (Test-Path "flutter/build/windows/x64/runner/Release") {
-              Copy-Item -Path "flutter/build/windows/x64/runner/Release\*" -Destination "release_dist" -Recurse -Force
-          }
-
-          if (Test-Path "target/release/librustdesk.dll") {
-              Copy-Item -Path "target/release/librustdesk.dll" -Destination "release_dist" -Force
-          } else {
-              Write-Error "target/release/librustdesk.dll wurde nicht erzeugt!"
-          }
-
-          Get-ChildItem -Path . -Recurse -Filter "*WindowInjection*.dll" -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -notlike "*\release_dist\*" } |
-            Select-Object -First 1 |
-            ForEach-Object { Copy-Item -Path $_.FullName -Destination "release_dist\WindowInjection.dll" -Force }
-
-          Get-ChildItem -Path . -Recurse -Filter "printer_driver_adapter.dll" -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -notlike "*\release_dist\*" } |
-            Select-Object -First 1 |
-            ForEach-Object { Copy-Item
+          $utf8 = New-Object System.
