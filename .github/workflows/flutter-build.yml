@@ -109,16 +109,23 @@ jobs:
               $dart = $dart -replace 'await\s+bind\.mainGetNewVersion\(\)', "''"
               $dart = $dart -replace 'bind\.mainGetNewVersion\(\)', "Future.value('')"
 
-              # B) Unteren Server-Hinweis & Komma nach "Ready" / "Bereit" entfernen (ohne Dart-Kommas zu zerstören!)
+              # B) Unteren Server-Hinweis & Komma nach "Ready" / "Bereit" sicher entfernen
               $dart = $dart -replace "translate\(\s*['`"]for faster connection, please setup your own server['`"]\s*\)", "''"
               $dart = $dart -replace "translate\(\s*['`"]setup_server_tip['`"]\s*\)", "''"
-              $dart = $dart -replace "\$\{translate\(\s*(['`"])Ready\1\s*\)\}\s*,\s*", "`${translate(`$1Ready`$1)}"
-              $dart = $dart -replace "translate\(\s*(['`"])Ready\1\s*\)\s*\+\s*(['`"])\s*,\s*\2", "translate(`$1Ready`$1)"
-              $dart = $dart -replace "(['`"])Ready,\s*(['`"])", "`$1Ready`$2"
-              $dart = $dart -replace "(['`"])Bereit,\s*(['`"])", "`$1Bereit`$2"
+              $dart = $dart.Replace('${translate(''Ready'')}, ', '${translate(''Ready'')}')
+              $dart = $dart.Replace('${translate("Ready")}, ', '${translate("Ready")}')
+              $dart = $dart.Replace('${translate(''Ready'')},', '${translate(''Ready'')}')
+              $dart = $dart.Replace('${translate("Ready")},', '${translate("Ready")}')
+              $dart = $dart.Replace('translate(''Ready'') + '', ''', 'translate(''Ready'')')
+              $dart = $dart.Replace('translate("Ready") + ", "', 'translate("Ready")')
+              $dart = $dart.Replace('translate(''Ready'') + '',''', 'translate(''Ready'')')
+              $dart = $dart.Replace('translate("Ready") + ","', 'translate("Ready")')
 
               if ($_.Name -eq "connection_page.dart") {
-                  $dart = $dart -replace "(['`"]),\s*\1", "`$1`$1"
+                  $dart = $dart.Replace("Text(', ')", "const SizedBox.shrink()")
+                  $dart = $dart.Replace('Text(", ")', "const SizedBox.shrink()")
+                  $dart = $dart.Replace("Text(',')", "const SizedBox.shrink()")
+                  $dart = $dart.Replace('Text(",")', "const SizedBox.shrink()")
               }
 
               # C) Pinke Banner in desktop_home_page.dart entfernen (UAC + "Your version is outdated")
