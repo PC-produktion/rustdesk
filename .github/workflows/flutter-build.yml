@@ -35,30 +35,31 @@ jobs:
               $content = $content -replace '(RENDEZVOUS_SERVERS\s*:\s*&\[&str\]\s*=\s*&\[)[^\]]*(\])', "`$1`"$env:RENDEZVOUS_SERVER`"`$2"
               $content = $content -replace 'rs-ny\.rustdesk\.com', "$env:RENDEZVOUS_SERVER"
               $content = $content -replace '(RS_PUB_KEY\s*:\s*&str\s*=\s*)"[^"]*"', "`$1`"$env:RS_PUB_KEY`""
-              if ($content -ne$orig) {
-                  [System.IO.File]::WriteAllText($_.FullName, $content,$utf8)
+              if ($content -ne $orig) {
+                  [System.IO.File]::WriteAllText($_.FullName, $content, $utf8)
                   Write-Host "OK: Server/Key/Name aktualisiert in $($_.FullName)"
               }
           }
 
           # 2. Windows Fenstertitel anpassen
           $mainCpp = "flutter/windows/runner/main.cpp"
-          if (Test-Path $mainCpp) {$cpp = [System.IO.File]::ReadAllText((Resolve-Path $mainCpp).Path, $utf8)
-              $cpp =$cpp -replace 'L"RustDesk"', "L`"$env:CUSTOM_APP_NAME`""
-              [System.IO.File]::WriteAllText((Resolve-Path $mainCpp).Path, $cpp,$utf8)
+          if (Test-Path $mainCpp) {
+              $cpp = [System.IO.File]::ReadAllText((Resolve-Path $mainCpp).Path, $utf8)
+              $cpp = $cpp -replace 'L"RustDesk"', "L`"$env:CUSTOM_APP_NAME`""
+              [System.IO.File]::WriteAllText((Resolve-Path $mainCpp).Path, $cpp, $utf8)
           }
 
           # 3. Update-Checks in Rust & Dart komplett abschalten
           Get-ChildItem -Path "src", "libs", "flutter/lib" -Recurse -Include "*.rs", "*.dart" -ErrorAction SilentlyContinue | ForEach-Object {
               $txt = [System.IO.File]::ReadAllText($_.FullName, $utf8)
-              $orig =$txt
-              $txt =$txt -replace 'https://api\.github\.com/repos/rustdesk/rustdesk/releases/latest', 'http://127.0.0.1:0/disabled'
-              $txt =$txt -replace 'https://rustdesk\.com/api/version', 'http://127.0.0.1:0/disabled'
-              $txt =$txt -replace 'https://rustdesk\.com/api/latest', 'http://127.0.0.1:0/disabled'
-              $txt =$txt -replace 'https://api\.rustdesk\.com/version/latest', 'http://127.0.0.1:0/disabled'
-              $txt =$txt -replace 'https://github\.com/rustdesk/rustdesk/releases/latest', 'http://127.0.0.1:0/disabled'
-              if ($txt -ne$orig) {
-                  [System.IO.File]::WriteAllText($_.FullName, $txt,$utf8)
+              $orig = $txt
+              $txt = $txt -replace 'https://api\.github\.com/repos/rustdesk/rustdesk/releases/latest', 'http://127.0.0.1:0/disabled'
+              $txt = $txt -replace 'https://rustdesk\.com/api/version', 'http://127.0.0.1:0/disabled'
+              $txt = $txt -replace 'https://rustdesk\.com/api/latest', 'http://127.0.0.1:0/disabled'
+              $txt = $txt -replace 'https://api\.rustdesk\.com/version/latest', 'http://127.0.0.1:0/disabled'
+              $txt = $txt -replace 'https://github\.com/rustdesk/rustdesk/releases/latest', 'http://127.0.0.1:0/disabled'
+              if ($txt -ne $orig) {
+                  [System.IO.File]::WriteAllText($_.FullName, $txt, $utf8)
               }
           }
 
@@ -67,9 +68,9 @@ jobs:
               Write-Error "FEHLER: flutter/assets/brand_logo.png fehlt!"
           }
           $pubspecPath = (Resolve-Path "flutter/pubspec.yaml").Path
-          $pubspec = [System.IO.File]::ReadAllText($pubspecPath,$utf8)
+          $pubspec = [System.IO.File]::ReadAllText($pubspecPath, $utf8)
           if ($pubspec -notmatch 'assets/brand_logo\.png') {
-              $pubspec =$pubspec -replace '(assets:\s*\r?\n)', "`$1    - assets/brand_logo.png`r`n"
+              $pubspec = $pubspec -replace '(assets:\s*\r?\n)', "`$1    - assets/brand_logo.png`r`n"
               [System.IO.File]::WriteAllText($pubspecPath, $pubspec, $utf8)
           }
 
@@ -82,10 +83,15 @@ jobs:
               $end = -1
               for ($i = $start + 4; $i -lt $ui.Length; $i++) {
                   $ch = $ui[$i]
-                  if ($ch -eq '(') { $depth++ }
+                  if ($ch -eq '(') {
+                      $depth++
+                  }
                   elseif ($ch -eq ')') {
                       $depth--
-                      if ($depth -eq 0) { $end = $i; break }
+                      if ($depth -eq 0) {
+                          $end = $i
+                          break
+                      }
                   }
               }
               if ($end -gt $start) {
@@ -113,49 +119,60 @@ jobs:
               $dart = $dart -replace 'bind\.mainIsInstalled\(\)', 'true'
               $dart = $dart -replace 'isInstalled\.value', 'true'
 
-              # B) Komma nach "Ready" / vor "setup_server_tip" in UI-Dateien entfernen
-              if (-not $isLangFile) {
+              # B) Komma nach "Ready" / vor "setup_server_tip" in UI-Dateien entfernen (dialog.dart auslassen)
+              if (-not $isLangFile -and $_.Name -ne "dialog.dart") {
                   if ($dart -match "(setup_server_tip|for faster connection)") {
                       Write-Host "TREFFER Status-Leiste in: $($_.FullName)"
                       $dart = [regex]::Replace($dart, "(['`"]),\s*\1(\s*,\s*[^\n]*(?:setup_server_tip|for faster connection))", "`$1`$1`$2")
                       $dart = [regex]::Replace($dart, "(\$\{translate\(['`"]Ready['`"]\)\}),\s*", "`$1")
                       $dart = [regex]::Replace($dart, "(translate\(['`"]Ready['`"]\)\s*\+\s*['`"]),\s*(['`"])", "translate('Ready')")
                   }
-                  $dart =$dart -replace "translate\(\s*['`"]for faster connection, please setup your own server['`"]\s*\)", "''"
-                  $dart =$dart -replace "translate\(\s*['`"]setup_server_tip['`"]\s*\)", "''"
+                  $dart = $dart -replace "translate\(\s*['`"]for faster connection, please setup your own server['`"]\s*\)", "''"
+                  $dart = $dart -replace "translate\(\s*['`"]setup_server_tip['`"]\s*\)", "''"
 
-                  # C) Pinke Banner ("Your version is outdated", "to upgrade", UAC) in ALLEN UI-Dateien entfernen
+                  # C) Pinke Banner ("Your version is outdated", "to upgrade", UAC) in UI-Dateien entfernen
                   $bannerAnchor = [regex]::Match($dart, "(Your version is outdated|version is outdated|outdated_version|to upgrade|uac_tip|install_tip|Due to User Account Control)")
                   while ($bannerAnchor.Success) {
                       Write-Host "TREFFER Banner ($($bannerAnchor.Value)) in: $($_.FullName)"
-                      $before = $dart.Substring(0,$bannerAnchor.Index)
+                      $before = $dart.Substring(0, $bannerAnchor.Index)
                       $wrapperMatches = [regex]::Matches($before, "(Obx|Visibility|Container|Expanded|Card|Material)\s*\(")
-                      $removed =$false
-                      for ($w = $wrapperMatches.Count - 1; $w -ge 0; $w--) {$wStart = $wrapperMatches[$w].Index
-                          $openParen = $dart.IndexOf('(',$wStart)
-                          $d = 0$wEnd = -1
+                      $removed = $false
+                      for ($w = $wrapperMatches.Count - 1; $w -ge 0; $w--) {
+                          $wStart = $wrapperMatches[$w].Index
+                          $openParen = $dart.IndexOf('(', $wStart)
+                          $d = 0
+                          $wEnd = -1
                           for ($j = $openParen; $j -lt $dart.Length; $j++) {
-                              if ($dart[$j] -eq '(') {$d++ }
-                              elseif ($dart[$j] -eq ')') {$d--
-                                  if ($d -eq 0) { $wEnd =$j; break }
+                              if ($dart[$j] -eq '(') {
+                                  $d++
+                              }
+                              elseif ($dart[$j] -eq ')') {
+                                  $d--
+                                  if ($d -eq 0) {
+                                      $wEnd = $j
+                                      break
+                                  }
                               }
                           }
-                          if ($wEnd -gt $bannerAnchor.Index) {$snippet = $dart.Substring($wStart, $wEnd -$wStart + 1)
+                          if ($wEnd -gt $bannerAnchor.Index) {
+                              $snippet = $dart.Substring($wStart, $wEnd - $wStart + 1)
                               if ($snippet -notmatch "Your Desktop" -and $snippet -notmatch "One-time Password" -and $snippet -notmatch "brand_logo\.png" -and $snippet -notmatch "Scaffold") {
-                                  $dart =$dart.Remove($wStart,$wEnd - $wStart + 1).Insert($wStart, "const SizedBox.shrink()")
+                                  $dart = $dart.Remove($wStart, $wEnd - $wStart + 1).Insert($wStart, "const SizedBox.shrink()")
                                   Write-Host "OK: Pinkes Banner ($($bannerAnchor.Value)) in $($_.Name) komplett entfernt!"
-                                  $removed =$true
+                                  $removed = $true
                                   break
                               }
                           }
                       }
-                      if (-not $removed) { break }
+                      if (-not $removed) {
+                          break
+                      }
                       $bannerAnchor = [regex]::Match($dart, "(Your version is outdated|version is outdated|outdated_version|to upgrade|uac_tip|install_tip|Due to User Account Control)")
                   }
               }
 
-              if ($dart -ne$dOrig) {
-                  [System.IO.File]::WriteAllText($_.FullName, $dart,$utf8)
+              if ($dart -ne $dOrig) {
+                  [System.IO.File]::WriteAllText($_.FullName, $dart, $utf8)
                   Write-Host "OK: Bereinigung durchgeführt in $($_.Name)."
               }
           }
@@ -171,4 +188,129 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $utf8 = New-Object System.
+          $utf8 = New-Object System.Text.UTF8Encoding($false)
+          if (Test-Path "mfx_src") {
+              Remove-Item -Path "mfx_src" -Recurse -Force
+          }
+          git clone --depth 1 https://github.com/lu-zero/mfx_dispatch.git mfx_src
+          $mfxSrcPath = (Resolve-Path "mfx_src").Path -replace '\\', '/'
+
+          New-Item -ItemType Directory -Force -Path "res/vcpkg/mfx-dispatch" | Out-Null
+          $vcpkgJsonPath = (Resolve-Path "res/vcpkg/mfx-dispatch").Path + "\vcpkg.json"
+          $portfilePath = (Resolve-Path "res/vcpkg/mfx-dispatch").Path + "\portfile.cmake"
+
+          [System.IO.File]::WriteAllText($vcpkgJsonPath, '{"name":"mfx-dispatch","version":"1.35.1","description":"Intel Media SDK dispatcher","dependencies":[{"name":"vcpkg-cmake","host":true},{"name":"vcpkg-cmake-config","host":true}]}', $utf8)
+
+          $portfileLines = @(
+              "set(SOURCE_PATH `"$mfxSrcPath`")"
+              'vcpkg_cmake_configure(SOURCE_PATH "${SOURCE_PATH}")'
+              'vcpkg_cmake_install()'
+              'if(EXISTS "${CURRENT_PACKAGES_DIR}/lib/pkgconfig")'
+              '  vcpkg_fixup_pkgconfig()'
+              'endif()'
+              'file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include" "${CURRENT_PACKAGES_DIR}/debug/share")'
+              'if(EXISTS "${SOURCE_PATH}/LICENSE")'
+              '  file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)'
+              'endif()'
+          )
+          [System.IO.File]::WriteAllText($portfilePath, ($portfileLines -join "`n"), $utf8)
+
+          & "$env:VCPKG_ROOT\vcpkg.exe" integrate install
+          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows-static --overlay-ports=res/vcpkg
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: "3.24.0"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install flutter_rust_bridge_codegen
+        run: cargo install flutter_rust_bridge_codegen --version 1.80.1
+
+      - name: Locate and Build WindowInjection.dll
+        shell: pwsh
+        run: |
+          $proj = Get-ChildItem -Recurse -Filter "*WindowInjection*.vcxproj" | Select-Object -First 1
+          if ($proj) {
+              msbuild $proj.FullName /p:Configuration=Release /p:Platform=x64
+          }
+          $cmakeDir = Get-ChildItem -Recurse -Directory -Filter "*WindowInjection*" | Select-Object -First 1
+          if ($cmakeDir -and (Test-Path "$($cmakeDir.FullName)\CMakeLists.txt")) {
+              cmake -S $cmakeDir.FullName -B "$($cmakeDir.FullName)\build" -A x64
+              cmake --build "$($cmakeDir.FullName)\build" --config Release
+          }
+
+      - name: Prepare Flutter Dependencies
+        run: |
+          cd flutter
+          flutter pub get
+
+      - name: Generate Bridge Code
+        run: |
+          cd flutter
+          flutter_rust_bridge_codegen --rust-input ../src/flutter_ffi.rs --dart-output lib/generated_bridge.dart
+
+      - name: Build Rust Engine and Flutter App
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $ws = (Get-Location).Path -replace '\\', '/'
+          $env:RUSTFLAGS = "-L native=$ws/vcpkg_installed/x64-windows-static/lib"
+          $env:BINDGEN_EXTRA_CLANG_ARGS = "-I`"$ws/vcpkg_installed/x64-windows-static/include`" -target x86_64-pc-windows-msvc"
+
+          cargo build --release --lib --features flutter
+          if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+          }
+
+          Set-Location flutter
+          flutter build windows --release
+          if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+          }
+
+      - name: Bundle Executable & DLLs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (Test-Path "release_dist") {
+              Remove-Item -Path "release_dist" -Recurse -Force
+          }
+          New-Item -ItemType Directory -Force -Path release_dist | Out-Null
+
+          if (Test-Path "flutter/build/windows/x64/runner/Release") {
+              Copy-Item -Path "flutter/build/windows/x64/runner/Release\*" -Destination "release_dist" -Recurse -Force
+          }
+
+          if (Test-Path "target/release/librustdesk.dll") {
+              Copy-Item -Path "target/release/librustdesk.dll" -Destination "release_dist" -Force
+          }
+          else {
+              Write-Error "target/release/librustdesk.dll wurde nicht erzeugt!"
+          }
+
+          Get-ChildItem -Path . -Recurse -Filter "*WindowInjection*.dll" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notlike "*\release_dist\*" } |
+            Select-Object -First 1 |
+            ForEach-Object { Copy-Item -Path $_.FullName -Destination "release_dist\WindowInjection.dll" -Force }
+
+          Get-ChildItem -Path . -Recurse -Filter "printer_driver_adapter.dll" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notlike "*\release_dist\*" } |
+            Select-Object -First 1 |
+            ForEach-Object { Copy-Item -Path $_.FullName -Destination "release_dist\printer_driver_adapter.dll" -Force }
+
+          Get-ChildItem -Path "flutter/build/windows/x64/plugins" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue |
+            Copy-Item -Destination "release_dist" -Force
+
+          Get-ChildItem "release_dist" | Select-Object Name, Length
+
+      - name: Upload Complete Windows Client
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustdesk-windows-complete
+          path: release_dist/
