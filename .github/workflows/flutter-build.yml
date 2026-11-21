@@ -109,7 +109,7 @@ jobs:
               $dart = $dart -replace 'await\s+bind\.mainGetNewVersion\(\)', "''"
               $dart = $dart -replace 'bind\.mainGetNewVersion\(\)', "Future.value('')"
 
-              # B) Unteren Server-Hinweis & Komma nach "Ready" / "Bereit" sicher entfernen
+              # B) Unteren Server-Hinweis & Komma nach "Ready" / "Bereit" in connection_page.dart entfernen
               $dart = $dart -replace "translate\(\s*['`"]for faster connection, please setup your own server['`"]\s*\)", "''"
               $dart = $dart -replace "translate\(\s*['`"]setup_server_tip['`"]\s*\)", "''"
               $dart = $dart.Replace('${translate(''Ready'')}, ', '${translate(''Ready'')}')
@@ -118,14 +118,12 @@ jobs:
               $dart = $dart.Replace('${translate("Ready")},', '${translate("Ready")}')
               $dart = $dart.Replace('translate(''Ready'') + '', ''', 'translate(''Ready'')')
               $dart = $dart.Replace('translate("Ready") + ", "', 'translate("Ready")')
-              $dart = $dart.Replace('translate(''Ready'') + '',''', 'translate(''Ready'')')
-              $dart = $dart.Replace('translate("Ready") + ","', 'translate("Ready")')
 
               if ($_.Name -eq "connection_page.dart") {
-                  $dart = $dart.Replace("Text(', ')", "const SizedBox.shrink()")
-                  $dart = $dart.Replace('Text(", ")', "const SizedBox.shrink()")
-                  $dart = $dart.Replace("Text(',')", "const SizedBox.shrink()")
-                  $dart = $dart.Replace('Text(",")', "const SizedBox.shrink()")
+                  $dart = $dart.Replace("text: ', '", "text: ''")
+                  $dart = $dart.Replace('text: ", "', 'text: ""')
+                  $dart = $dart.Replace("text: ','", "text: ''")
+                  $dart = $dart.Replace('text: ","', 'text: ""')
               }
 
               # C) Pinke Banner in desktop_home_page.dart entfernen (UAC + "Your version is outdated")
@@ -134,7 +132,8 @@ jobs:
                   $dart = $dart -replace 'isInstalled\.value', 'true'
                   $dart = $dart -replace '!\s*isInstalled', 'false'
 
-                  $bannerAnchor = [regex]::Match($dart, "(Your version is outdated|to upgrade|outdated|LinearGradient|User Account Control|UAC|uac_tip|install_tip|translate\(\s*['`"]Install['`"]\s*\))")
+                  # Alle pinken/roten Farbverläufe & Outdated-Version-Boxen in desktop_home_page.dart abschalten
+                  $bannerAnchor = [regex]::Match($dart, "(Your version is outdated|version is outdated|to upgrade|outdated|0xFF[Ee][0-9A-Fa-f]{4}|0xFF[Ff][0-9A-Fa-f]{4}|LinearGradient|User Account Control|UAC|uac_tip|install_tip|translate\(\s*['`"]Install['`"]\s*\))")
                   while ($bannerAnchor.Success) {
                       $before = $dart.Substring(0, $bannerAnchor.Index)
                       $wrapperMatches = [regex]::Matches($before, "(Obx|Visibility|Container|Expanded)\s*\(")
@@ -162,7 +161,7 @@ jobs:
                           }
                       }
                       if (-not $removed) { break }
-                      $bannerAnchor = [regex]::Match($dart, "(Your version is outdated|to upgrade|outdated|LinearGradient|User Account Control|UAC|uac_tip|install_tip|translate\(\s*['`"]Install['`"]\s*\))")
+                      $bannerAnchor = [regex]::Match($dart, "(Your version is outdated|version is outdated|to upgrade|outdated|0xFF[Ee][0-9A-Fa-f]{4}|0xFF[Ff][0-9A-Fa-f]{4}|LinearGradient|User Account Control|UAC|uac_tip|install_tip|translate\(\s*['`"]Install['`"]\s*\))")
                   }
               }
 
