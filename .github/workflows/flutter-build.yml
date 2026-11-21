@@ -35,6 +35,8 @@ jobs:
               $content = $content -replace '(RENDEZVOUS_SERVERS\s*:\s*&\[&str\]\s*=\s*&\[)[^\]]*(\])', "`$1`"$env:RENDEZVOUS_SERVER`"`$2"
               $content = $content -replace 'rs-ny\.rustdesk\.com', "$env:RENDEZVOUS_SERVER"
               $content = $content -replace '(RS_PUB_KEY\s*:\s*&str\s*=\s*)"[^"]*"', "`$1`"$env:RS_PUB_KEY`""
+              # Server-Versionswarnung ("version is outdated") im Rust-Backend unterdrücken
+              $content = $content -replace '(\.version\s*=\s*)[^;]+;', "`$1String::new();"
               if ($content -ne $orig) {
                   [System.IO.File]::WriteAllText($_.FullName, $content, $utf8)
                   Write-Host "OK: Server/Key/Name aktualisiert in $($_.FullName)"
@@ -103,71 +105,50 @@ jobs:
               }
           }
 
-          # 5. ALLE pinken Banner & Komma nach "Bereit" in GESAMT flutter/lib finden und bereinigen
+          # 5. Update-/Outdated-Banner & Komma nach "Bereit" syntaxsicher bereinigen
           Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
               $dart = [System.IO.File]::ReadAllText($_.FullName, $utf8)
               $dOrig = $dart
               $isLangFile = $_.FullName -match "[\\/]langs[\\/]"
 
-              # A) Update- & Server-Versions-Banner deaktivieren
+              # A) Alle Update- & Server-Version-Outdated-Flags in Dart deaktivieren
               $dart = $dart -replace 'newVersion\.isNotEmpty', 'false'
               $dart = $dart -replace 'newVersion\.value\.isNotEmpty', 'false'
               $dart = $dart -replace 'stateGlobal\.newVersion\.value\.isNotEmpty', 'false'
+              $dart = $dart -replace 'serverVersion\.isNotEmpty', 'false'
+              $dart = $dart -replace 'serverVersion\.value\.isNotEmpty', 'false'
               $dart = $dart -replace "Future(?:<String>)?\.value\(''\)", "''"
               $dart = $dart -replace 'await\s+bind\.mainGetNewVersion\(\)', "''"
               $dart = $dart -replace 'bind\.mainGetNewVersion\(\)', "Future.value('')"
               $dart = $dart -replace 'bind\.mainIsInstalled\(\)', 'true'
               $dart = $dart -replace 'isInstalled\.value', 'true'
 
-              # B) Komma nach "Ready" / vor "setup_server_tip" in UI-Dateien entfernen (dialog.dart auslassen)
-              if (-not $isLangFile -and $_.Name -ne "dialog.dart") {
+              # B) Komma vor setup_server_tip & Outdated-Banner in UI-Dateien bereinigen
+              if (-not $isLangFile) {
                   if ($dart -match "(setup_server_tip|for faster connection)") {
                       Write-Host "TREFFER Status-Leiste in: $($_.FullName)"
-                      $dart = [regex]::Replace($dart, "(['`"]),\s*\1(\s*,\s*[^\n]*(?:setup_server_tip|for faster connection))", "`$1`$1`$2")
-                      $dart = [regex]::Replace($dart, "(\$\{translate\(['`"]Ready['`"]\)\}),\s*", "`$1")
-                      $dart = [regex]::Replace($dart, "(translate\(['`"]Ready['`"]\)\s*\+\s*['`"]),\s*(['`"])", "translate('Ready')")
+                      $lines = $dart -split "`r?`n"
+                      for ($idx = 0; $idx -lt $lines.Count; $idx++) {
+                          if ($lines[$idx] -match "(setup_server_tip|for faster connection)") {
+                              $from = [Math]::Max(0, $idx - 3)
+                              $to = [Math]::Min($lines.Count - 1, $idx + 2)
+                              for ($k = $from; $k -le $to; $k++) {
+                                  Write-Host "  Zeile $($k + 1): $($lines[$k])"
+                                  $lines[$k] = $lines[$k].Replace("', '", "''").Replace('", "', '""').Replace("','", "''").Replace('","', '""')
+                              }
+                          }
+                      }
+                      $dart = $lines -join "`n"
                   }
+
                   $dart = $dart -replace "translate\(\s*['`"]for faster connection, please setup your own server['`"]\s*\)", "''"
                   $dart = $dart -replace "translate\(\s*['`"]setup_server_tip['`"]\s*\)", "''"
 
-                  # C) Pinke Banner ("Your version is outdated", "to upgrade", UAC) in UI-Dateien entfernen
-                  $bannerAnchor = [regex]::Match($dart, "(Your version is outdated|version is outdated|outdated_version|to upgrade|uac_tip|install_tip|Due to User Account Control)")
-                  while ($bannerAnchor.Success) {
-                      Write-Host "TREFFER Banner ($($bannerAnchor.Value)) in: $($_.FullName)"
-                      $before = $dart.Substring(0, $bannerAnchor.Index)
-                      $wrapperMatches = [regex]::Matches($before, "(Obx|Visibility|Container|Expanded|Card|Material)\s*\(")
-                      $removed = $false
-                      for ($w = $wrapperMatches.Count - 1; $w -ge 0; $w--) {
-                          $wStart = $wrapperMatches[$w].Index
-                          $openParen = $dart.IndexOf('(', $wStart)
-                          $d = 0
-                          $wEnd = -1
-                          for ($j = $openParen; $j -lt $dart.Length; $j++) {
-                              if ($dart[$j] -eq '(') {
-                                  $d++
-                              }
-                              elseif ($dart[$j] -eq ')') {
-                                  $d--
-                                  if ($d -eq 0) {
-                                      $wEnd = $j
-                                      break
-                                  }
-                              }
-                          }
-                          if ($wEnd -gt $bannerAnchor.Index) {
-                              $snippet = $dart.Substring($wStart, $wEnd - $wStart + 1)
-                              if ($snippet -notmatch "Your Desktop" -and $snippet -notmatch "One-time Password" -and $snippet -notmatch "brand_logo\.png" -and $snippet -notmatch "Scaffold") {
-                                  $dart = $dart.Remove($wStart, $wEnd - $wStart + 1).Insert($wStart, "const SizedBox.shrink()")
-                                  Write-Host "OK: Pinkes Banner ($($bannerAnchor.Value)) in $($_.Name) komplett entfernt!"
-                                  $removed = $true
-                                  break
-                              }
-                          }
-                      }
-                      if (-not $removed) {
-                          break
-                      }
-                      $bannerAnchor = [regex]::Match($dart, "(Your version is outdated|version is outdated|outdated_version|to upgrade|uac_tip|install_tip|Due to User Account Control)")
+                  # C) Nur exakte Widget-Aufrufe für Outdated-Banner durch SizedBox.shrink() ersetzen
+                  if ($dart -match "Your version is outdated") {
+                      Write-Host "TREFFER Outdated-Banner in: $($_.FullName)"
+                      $dart = $dart -replace "translate\(\s*['`"]Your version is outdated['`"]\s*\)", "''"
+                      $dart = $dart -replace "translate\(\s*['`"]to upgrade['`"]\s*\)", "''"
                   }
               }
 
