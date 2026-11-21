@@ -35,8 +35,6 @@ jobs:
               $content = $content -replace '(RENDEZVOUS_SERVERS\s*:\s*&\[&str\]\s*=\s*&\[)[^\]]*(\])', "`$1`"$env:RENDEZVOUS_SERVER`"`$2"
               $content = $content -replace 'rs-ny\.rustdesk\.com', "$env:RENDEZVOUS_SERVER"
               $content = $content -replace '(RS_PUB_KEY\s*:\s*&str\s*=\s*)"[^"]*"', "`$1`"$env:RS_PUB_KEY`""
-              # Server-Versionswarnung ("version is outdated") im Rust-Backend unterdrücken
-              $content = $content -replace '(\.version\s*=\s*)[^;]+;', "`$1String::new();"
               if ($content -ne $orig) {
                   [System.IO.File]::WriteAllText($_.FullName, $content, $utf8)
                   Write-Host "OK: Server/Key/Name aktualisiert in $($_.FullName)"
@@ -144,10 +142,11 @@ jobs:
                   $dart = $dart -replace "translate\(\s*['`"]for faster connection, please setup your own server['`"]\s*\)", "''"
                   $dart = $dart -replace "translate\(\s*['`"]setup_server_tip['`"]\s*\)", "''"
 
-                  # C) Nur exakte Widget-Aufrufe für Outdated-Banner durch SizedBox.shrink() ersetzen
-                  if ($dart -match "Your version is outdated") {
+                  # C) Outdated-Banner-Texte in UI-Dateien ausblenden
+                  if ($dart -match "(Your version is outdated|outdated_version)") {
                       Write-Host "TREFFER Outdated-Banner in: $($_.FullName)"
                       $dart = $dart -replace "translate\(\s*['`"]Your version is outdated['`"]\s*\)", "''"
+                      $dart = $dart -replace "translate\(\s*['`"]outdated_version_tip['`"]\s*\)", "''"
                       $dart = $dart -replace "translate\(\s*['`"]to upgrade['`"]\s*\)", "''"
                   }
               }
