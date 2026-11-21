@@ -96,12 +96,12 @@ jobs:
               }
           }
 
-          # 5. Update-Banner, pinkes UAC-/Install-Banner UND Komma nach "Bereit" im Flutter-UI entfernen
+          # 5. ALLE pinken Banner (Update, Server-Version-Outdated, UAC) UND Komma nach "Bereit" entfernen
           Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
               $dart = Get-Content -Path $_.FullName -Raw -Encoding UTF8
               $dOrig = $dart
 
-              # A) Update-Banner deaktivieren
+              # A) Update- & Server-Versions-Banner deaktivieren
               $dart = $dart -replace 'newVersion\.isNotEmpty', 'false'
               $dart = $dart -replace 'newVersion\.value\.isNotEmpty', 'false'
               $dart = $dart -replace 'stateGlobal\.newVersion\.value\.isNotEmpty', 'false'
@@ -109,26 +109,26 @@ jobs:
               $dart = $dart -replace 'await\s+bind\.mainGetNewVersion\(\)', "''"
               $dart = $dart -replace 'bind\.mainGetNewVersion\(\)', "Future.value('')"
 
-              # B) Unteren Server-Hinweis & JEDES Komma nach "Ready" / Status entfernen
+              # B) Unteren Server-Hinweis & JEDES Komma nach "Ready" / "Bereit" entfernen
               $dart = $dart -replace "translate\(\s*['`"]for faster connection, please setup your own server['`"]\s*\)", "''"
               $dart = $dart -replace "translate\(\s*['`"]setup_server_tip['`"]\s*\)", "''"
-              $dart = $dart -replace "\$\{translate\(\s*['`"]Ready['`"]\s*\)\}\s*,\s*", "`${translate('Ready')}"
-              $dart = $dart -replace "translate\(\s*['`"]Ready['`"]\s*\)\s*\+\s*['`"]\s*,\s*['`"]", "translate('Ready')"
+              $dart = $dart -replace "translate\(\s*(['`"])Ready\1\s*\)\s*,\s*", "translate(`$1Ready`$1)"
+              $dart = $dart -replace "\$\{translate\(\s*(['`"])Ready\1\s*\)\}\s*,\s*", "`${translate(`$1Ready`$1)}"
+              $dart = $dart -replace "translate\(\s*(['`"])Ready\1\s*\)\s*\+\s*(['`"])\s*,\s*\2", "translate(`$1Ready`$1)"
               $dart = $dart -replace "(['`"])Ready,\s*(['`"])", "`$1Ready`$2"
               $dart = $dart -replace "(['`"])Bereit,\s*(['`"])", "`$1Bereit`$2"
-              # Falls der Text über ein TextSpan / Row mit separatem ', ' Widget gebaut wird:
               $dart = $dart -replace "Text\(\s*['`"],\s*['`"]\s*\)", "const SizedBox.shrink()"
               $dart = $dart -replace "TextSpan\(\s*text:\s*['`"],\s*['`"]\s*\)", "const TextSpan(text: '')"
 
-              # C) Pinkes UAC-/Installations-Banner in desktop_home_page.dart entfernen (über Gradient/Install-Button & UAC-Keys)
+              # C) Pinke Banner in desktop_home_page.dart entfernen (UAC + "Your version is outdated")
               if ($_.Name -eq "desktop_home_page.dart") {
                   $dart = $dart -replace 'bind\.mainIsInstalled\(\)', 'true'
                   $dart = $dart -replace 'isInstalled\.value', 'true'
                   $dart = $dart -replace '!\s*isInstalled', 'false'
 
-                  $uacAnchor = [regex]::Match($dart, "(LinearGradient|User Account Control|UAC|uac_tip|install_tip|translate\(\s*['`"]Install['`"]\s*\))")
-                  while ($uacAnchor.Success) {
-                      $before = $dart.Substring(0, $uacAnchor.Index)
+                  $bannerAnchor = [regex]::Match($dart, "(Your version is outdated|to upgrade|outdated|LinearGradient|User Account Control|UAC|uac_tip|install_tip|translate\(\s*['`"]Install['`"]\s*\))")
+                  while ($bannerAnchor.Success) {
+                      $before = $dart.Substring(0, $bannerAnchor.Index)
                       $wrapperMatches = [regex]::Matches($before, "(Obx|Visibility|Container|Expanded)\s*\(")
                       $removed = $false
                       for ($w = $wrapperMatches.Count - 1; $w -ge 0; $w--) {
@@ -143,18 +143,18 @@ jobs:
                                   if ($d -eq 0) { $wEnd = $j; break }
                               }
                           }
-                          if ($wEnd -gt $uacAnchor.Index) {
+                          if ($wEnd -gt $bannerAnchor.Index) {
                               $snippet = $dart.Substring($wStart, $wEnd - $wStart + 1)
                               if ($snippet -notmatch "Your Desktop" -and $snippet -notmatch "One-time Password" -and $snippet -notmatch "brand_logo\.png") {
                                   $dart = $dart.Remove($wStart, $wEnd - $wStart + 1).Insert($wStart, "const SizedBox.shrink()")
-                                  Write-Host "OK: Pinkes UAC-/Installations-Banner in $($_.Name) komplett entfernt!"
+                                  Write-Host "OK: Pinkes Banner ($($bannerAnchor.Value)) in $($_.Name) komplett entfernt!"
                                   $removed = $true
                                   break
                               }
                           }
                       }
                       if (-not $removed) { break }
-                      $uacAnchor = [regex]::Match($dart, "(LinearGradient|User Account Control|UAC|uac_tip|install_tip|translate\(\s*['`"]Install['`"]\s*\))")
+                      $bannerAnchor = [regex]::Match($dart, "(Your version is outdated|to upgrade|outdated|LinearGradient|User Account Control|UAC|uac_tip|install_tip|translate\(\s*['`"]Install['`"]\s*\))")
                   }
               }
 
