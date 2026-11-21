@@ -103,36 +103,42 @@ jobs:
               }
           }
 
-          # 5. Update-/Outdated-Banner & Komma nach "Bereit" syntaxsicher bereinigen
+          # 5. Pinkes Outdated-Banner & Komma nach "Bereit" syntaxsicher bereinigen
           Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
               $dart = [System.IO.File]::ReadAllText($_.FullName, $utf8)
               $dOrig = $dart
               $isLangFile = $_.FullName -match "[\\/]langs[\\/]"
 
-              # A) Alle Update- & Server-Version-Outdated-Flags in Dart deaktivieren
+              # A) Update-, Server-Version- & Outdated-Flags in Dart deaktivieren
               $dart = $dart -replace 'newVersion\.isNotEmpty', 'false'
               $dart = $dart -replace 'newVersion\.value\.isNotEmpty', 'false'
               $dart = $dart -replace 'stateGlobal\.newVersion\.value\.isNotEmpty', 'false'
               $dart = $dart -replace 'serverVersion\.isNotEmpty', 'false'
               $dart = $dart -replace 'serverVersion\.value\.isNotEmpty', 'false'
+              $dart = $dart -replace 'versionOld\.value', 'false'
+              $dart = $dart -replace 'isOutdated\.value', 'false'
+              $dart = $dart -replace 'bind\.mainGetVersionCheck\(\)', '""'
               $dart = $dart -replace "Future(?:<String>)?\.value\(''\)", "''"
               $dart = $dart -replace 'await\s+bind\.mainGetNewVersion\(\)', "''"
               $dart = $dart -replace 'bind\.mainGetNewVersion\(\)', "Future.value('')"
               $dart = $dart -replace 'bind\.mainIsInstalled\(\)', 'true'
               $dart = $dart -replace 'isInstalled\.value', 'true'
 
-              # B) Komma vor setup_server_tip & Outdated-Banner in UI-Dateien bereinigen
               if (-not $isLangFile) {
+                  # B) Diagnose & Entfernung des Kommas vor setup_server_tip / nach Ready
                   if ($dart -match "(setup_server_tip|for faster connection)") {
-                      Write-Host "TREFFER Status-Leiste in: $($_.FullName)"
+                      Write-Host "=== FUNDSTELLE STATUS-KOMMA in $($_.FullName) ==="
                       $lines = $dart -split "`r?`n"
                       for ($idx = 0; $idx -lt $lines.Count; $idx++) {
                           if ($lines[$idx] -match "(setup_server_tip|for faster connection)") {
-                              $from = [Math]::Max(0, $idx - 3)
-                              $to = [Math]::Min($lines.Count - 1, $idx + 2)
+                              $from = [Math]::Max(0, $idx - 6)
+                              $to = [Math]::Min($lines.Count - 1, $idx + 3)
                               for ($k = $from; $k -le $to; $k++) {
-                                  Write-Host "  Zeile $($k + 1): $($lines[$k])"
-                                  $lines[$k] = $lines[$k].Replace("', '", "''").Replace('", "', '""').Replace("','", "''").Replace('","', '""')
+                                  Write-Host "  L$($k + 1): $($lines[$k])"
+                                  $lines[$k] = $lines[$k] -replace "Text\(\s*['`"],\s*['`"]\s*\)", "const SizedBox.shrink()"
+                                  $lines[$k] = $lines[$k] -replace "text:\s*['`"],\s*['`"]", "text: ''"
+                                  $lines[$k] = $lines[$k] -replace "\$\{translate\(['`"]Ready['`"]\)\},\s*", "`${translate('Ready')}"
+                                  $lines[$k] = $lines[$k] -replace "translate\(['`"]Ready['`"]\)\s*\+\s*['`"],\s*['`"]", "translate('Ready')"
                               }
                           }
                       }
@@ -142,12 +148,23 @@ jobs:
                   $dart = $dart -replace "translate\(\s*['`"]for faster connection, please setup your own server['`"]\s*\)", "''"
                   $dart = $dart -replace "translate\(\s*['`"]setup_server_tip['`"]\s*\)", "''"
 
-                  # C) Outdated-Banner-Texte in UI-Dateien ausblenden
-                  if ($dart -match "(Your version is outdated|outdated_version)") {
-                      Write-Host "TREFFER Outdated-Banner in: $($_.FullName)"
-                      $dart = $dart -replace "translate\(\s*['`"]Your version is outdated['`"]\s*\)", "''"
-                      $dart = $dart -replace "translate\(\s*['`"]outdated_version_tip['`"]\s*\)", "''"
-                      $dart = $dart -replace "translate\(\s*['`"]to upgrade['`"]\s*\)", "''"
+                  # C) Diagnose & Ausblenden des pinken "Your version is outdated"-Banners über Visibility/if-Bedingung
+                  if ($dart -match "(Your version is outdated|outdated_version|to upgrade)") {
+                      Write-Host "=== FUNDSTELLE OUTDATED-BANNER in $($_.FullName) ==="
+                      $bLines = $dart -split "`r?`n"
+                      for ($idx = 0; $idx -lt $bLines.Count; $idx++) {
+                          if ($bLines[$idx] -match "(Your version is outdated|outdated_version|to upgrade)") {
+                              $from = [Math]::Max(0, $idx - 12)
+                              $to = [Math]::Min($bLines.Count - 1, $idx + 6)
+                              for ($k = $from; $k -le $to; $k++) {
+                                  Write-Host "  L$($k + 1): $($bLines[$k])"
+                                  if ($bLines[$k] -match "visible\s*:") {
+                                      $bLines[$k] = $bLines[$k] -replace "visible\s*:[^,]+,", "visible: false,"
+                                  }
+                              }
+                          }
+                      }
+                      $dart = $bLines -join "`n"
                   }
               }
 
