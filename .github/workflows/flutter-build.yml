@@ -34,8 +34,8 @@ jobs:
               $content = $content -replace '(RENDEZVOUS_SERVERS\s*:\s*&\[&str\]\s*=\s*&\[)[^\]]*(\])', "`$1`"$env:RENDEZVOUS_SERVER`"`$2"
               $content = $content -replace 'rs-ny\.rustdesk\.com', "$env:RENDEZVOUS_SERVER"
               $content = $content -replace '(RS_PUB_KEY\s*:\s*&str\s*=\s*)"[^"]*"', "`$1`"$env:RS_PUB_KEY`""
-              if ($content -ne $orig) {
-                  Set-Content -Path $_.FullName -Value $content -Encoding UTF8
+              if ($content -ne$orig) {
+                  Set-Content -Path $_.FullName -Value$content -Encoding UTF8
                   Write-Host "OK: Server/Key/Name aktualisiert in $($_.FullName)"
               }
           }
@@ -43,22 +43,22 @@ jobs:
           # 2. Windows Fenstertitel anpassen
           $mainCpp = "flutter/windows/runner/main.cpp"
           if (Test-Path $mainCpp) {
-              $cpp = Get-Content -Path $mainCpp -Raw -Encoding UTF8
-              $cpp = $cpp -replace 'L"RustDesk"', "L`"$env:CUSTOM_APP_NAME`""
-              Set-Content -Path $mainCpp -Value $cpp -Encoding UTF8
+              $cpp = Get-Content -Path$mainCpp -Raw -Encoding UTF8
+              $cpp =$cpp -replace 'L"RustDesk"', "L`"$env:CUSTOM_APP_NAME`""
+              Set-Content -Path $mainCpp -Value$cpp -Encoding UTF8
           }
 
           # 3. Update-Checks in Rust & Dart komplett abschalten
           Get-ChildItem -Path "src", "libs", "flutter/lib" -Recurse -Include "*.rs", "*.dart" -ErrorAction SilentlyContinue | ForEach-Object {
-              $txt = Get-Content -Path $_.FullName -Raw -Encoding UTF8
-              $orig = $txt
-              $txt = $txt -replace 'https://api\.github\.com/repos/rustdesk/rustdesk/releases/latest', 'http://127.0.0.1:0/disabled'
-              $txt = $txt -replace 'https://rustdesk\.com/api/version', 'http://127.0.0.1:0/disabled'
-              $txt = $txt -replace 'https://rustdesk\.com/api/latest', 'http://127.0.0.1:0/disabled'
-              $txt = $txt -replace 'https://api\.rustdesk\.com/version/latest', 'http://127.0.0.1:0/disabled'
-              $txt = $txt -replace 'https://github\.com/rustdesk/rustdesk/releases/latest', 'http://127.0.0.1:0/disabled'
-              if ($txt -ne $orig) {
-                  Set-Content -Path $_.FullName -Value $txt -Encoding UTF8
+              $txt = Get-Content -Path$_.FullName -Raw -Encoding UTF8
+              $orig =$txt
+              $txt =$txt -replace 'https://api\.github\.com/repos/rustdesk/rustdesk/releases/latest', 'http://127.0.0.1:0/disabled'
+              $txt =$txt -replace 'https://rustdesk\.com/api/version', 'http://127.0.0.1:0/disabled'
+              $txt =$txt -replace 'https://rustdesk\.com/api/latest', 'http://127.0.0.1:0/disabled'
+              $txt =$txt -replace 'https://api\.rustdesk\.com/version/latest', 'http://127.0.0.1:0/disabled'
+              $txt =$txt -replace 'https://github\.com/rustdesk/rustdesk/releases/latest', 'http://127.0.0.1:0/disabled'
+              if ($txt -ne$orig) {
+                  Set-Content -Path $_.FullName -Value$txt -Encoding UTF8
               }
           }
 
@@ -68,7 +68,7 @@ jobs:
           }
           $pubspec = Get-Content -Path "flutter/pubspec.yaml" -Raw -Encoding UTF8
           if ($pubspec -notmatch 'assets/brand_logo\.png') {
-              $pubspec = $pubspec -replace '(assets:\s*\r?\n)', "`$1    - assets/brand_logo.png`r`n"
+              $pubspec =$pubspec -replace '(assets:\s*\r?\n)', "`$1    - assets/brand_logo.png`r`n"
               Set-Content -Path "flutter/pubspec.yaml" -Value $pubspec -Encoding UTF8
           }
 
@@ -96,10 +96,11 @@ jobs:
               }
           }
 
-          # 5. ALLE pinken Banner (Update, Server-Version-Outdated, UAC) UND Komma nach "Bereit" entfernen
+          # 5. ALLE pinken Banner & Komma nach "Bereit" in GESAMT flutter/lib finden und bereinigen
           Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
               $dart = Get-Content -Path $_.FullName -Raw -Encoding UTF8
               $dOrig = $dart
+              $isLangFile = $_.FullName -match "[\\/]langs[\\/]"
 
               # A) Update- & Server-Versions-Banner deaktivieren
               $dart = $dart -replace 'newVersion\.isNotEmpty', 'false'
@@ -108,65 +109,53 @@ jobs:
               $dart = $dart -replace "Future(?:<String>)?\.value\(''\)", "''"
               $dart = $dart -replace 'await\s+bind\.mainGetNewVersion\(\)', "''"
               $dart = $dart -replace 'bind\.mainGetNewVersion\(\)', "Future.value('')"
+              $dart = $dart -replace 'bind\.mainIsInstalled\(\)', 'true'
+              $dart = $dart -replace 'isInstalled\.value', 'true'
 
-              # B) Unteren Server-Hinweis & Komma nach "Ready" / "Bereit" in connection_page.dart entfernen
-              $dart = $dart -replace "translate\(\s*['`"]for faster connection, please setup your own server['`"]\s*\)", "''"
-              $dart = $dart -replace "translate\(\s*['`"]setup_server_tip['`"]\s*\)", "''"
-              $dart = $dart.Replace('${translate(''Ready'')}, ', '${translate(''Ready'')}')
-              $dart = $dart.Replace('${translate("Ready")}, ', '${translate("Ready")}')
-              $dart = $dart.Replace('${translate(''Ready'')},', '${translate(''Ready'')}')
-              $dart = $dart.Replace('${translate("Ready")},', '${translate("Ready")}')
-              $dart = $dart.Replace('translate(''Ready'') + '', ''', 'translate(''Ready'')')
-              $dart = $dart.Replace('translate("Ready") + ", "', 'translate("Ready")')
+              # B) Komma nach "Ready" / vor "setup_server_tip" in UI-Dateien entfernen
+              if (-not $isLangFile) {
+                  if ($dart -match "(setup_server_tip|for faster connection)") {
+                      Write-Host "TREFFER Status-Leiste in: $($_.FullName)"
+                      # Entferne das ', ' unmittelbar vor setup_server_tip / for faster connection
+                      $dart = [regex]::Replace($dart, "(['`"]),\s*\1(\s*,\s*[^\n]*(?:setup_server_tip|for faster connection))", "`$1`$1`$2")
+                      $dart = [regex]::Replace($dart, "(\$\{translate\(['`"]Ready['`"]\)\}),\s*", "`$1")
+                      $dart = [regex]::Replace($dart, "(translate\(['`"]Ready['`"]\)\s*\+\s*['`"]),\s*(['`"])", "translate('Ready')")
+                  }
+                  $dart =$dart -replace "translate\(\s*['`"]for faster connection, please setup your own server['`"]\s*\)", "''"
+                  $dart =$dart -replace "translate\(\s*['`"]setup_server_tip['`"]\s*\)", "''"
 
-              if ($_.Name -eq "connection_page.dart") {
-                  $dart = $dart.Replace("text: ', '", "text: ''")
-                  $dart = $dart.Replace('text: ", "', 'text: ""')
-                  $dart = $dart.Replace("text: ','", "text: ''")
-                  $dart = $dart.Replace('text: ","', 'text: ""')
-              }
-
-              # C) Pinke Banner in desktop_home_page.dart entfernen (UAC + "Your version is outdated")
-              if ($_.Name -eq "desktop_home_page.dart") {
-                  $dart = $dart -replace 'bind\.mainIsInstalled\(\)', 'true'
-                  $dart = $dart -replace 'isInstalled\.value', 'true'
-                  $dart = $dart -replace '!\s*isInstalled', 'false'
-
-                  # Alle pinken/roten Farbverläufe & Outdated-Version-Boxen in desktop_home_page.dart abschalten
-                  $bannerAnchor = [regex]::Match($dart, "(Your version is outdated|version is outdated|to upgrade|outdated|0xFF[Ee][0-9A-Fa-f]{4}|0xFF[Ff][0-9A-Fa-f]{4}|LinearGradient|User Account Control|UAC|uac_tip|install_tip|translate\(\s*['`"]Install['`"]\s*\))")
+                  # C) Pinke Banner ("Your version is outdated", "to upgrade", UAC) in ALLEN UI-Dateien entfernen
+                  $bannerAnchor = [regex]::Match($dart, "(Your version is outdated|version is outdated|outdated_version|to upgrade|uac_tip|install_tip|Due to User Account Control)")
                   while ($bannerAnchor.Success) {
-                      $before = $dart.Substring(0, $bannerAnchor.Index)
-                      $wrapperMatches = [regex]::Matches($before, "(Obx|Visibility|Container|Expanded)\s*\(")
-                      $removed = $false
-                      for ($w = $wrapperMatches.Count - 1; $w -ge 0; $w--) {
-                          $wStart = $wrapperMatches[$w].Index
-                          $openParen = $dart.IndexOf('(', $wStart)
-                          $d = 0
-                          $wEnd = -1
+                      Write-Host "TREFFER Banner ($($bannerAnchor.Value)) in: $($_.FullName)"
+                      $before = $dart.Substring(0,$bannerAnchor.Index)
+                      $wrapperMatches = [regex]::Matches($before, "(Obx|Visibility|Container|Expanded|Card|Material)\s*\(")
+                      $removed =$false
+                      for ($w = $wrapperMatches.Count - 1; $w -ge 0; $w--) {$wStart = $wrapperMatches[$w].Index
+                          $openParen = $dart.IndexOf('(',$wStart)
+                          $d = 0$wEnd = -1
                           for ($j = $openParen; $j -lt $dart.Length; $j++) {
-                              if ($dart[$j] -eq '(') { $d++ }
-                              elseif ($dart[$j] -eq ')') {
-                                  $d--
-                                  if ($d -eq 0) { $wEnd = $j; break }
+                              if ($dart[$j] -eq '(') {$d++ }
+                              elseif ($dart[$j] -eq ')') {$d--
+                                  if ($d -eq 0) { $wEnd =$j; break }
                               }
                           }
-                          if ($wEnd -gt $bannerAnchor.Index) {
-                              $snippet = $dart.Substring($wStart, $wEnd - $wStart + 1)
-                              if ($snippet -notmatch "Your Desktop" -and $snippet -notmatch "One-time Password" -and $snippet -notmatch "brand_logo\.png") {
-                                  $dart = $dart.Remove($wStart, $wEnd - $wStart + 1).Insert($wStart, "const SizedBox.shrink()")
+                          if ($wEnd -gt $bannerAnchor.Index) {$snippet = $dart.Substring($wStart, $wEnd -$wStart + 1)
+                              if ($snippet -notmatch "Your Desktop" -and $snippet -notmatch "One-time Password" -and $snippet -notmatch "brand_logo\.png" -and $snippet -notmatch "Scaffold") {
+                                  $dart =$dart.Remove($wStart,$wEnd - $wStart + 1).Insert($wStart, "const SizedBox.shrink()")
                                   Write-Host "OK: Pinkes Banner ($($bannerAnchor.Value)) in $($_.Name) komplett entfernt!"
-                                  $removed = $true
+                                  $removed =$true
                                   break
                               }
                           }
                       }
                       if (-not $removed) { break }
-                      $bannerAnchor = [regex]::Match($dart, "(Your version is outdated|version is outdated|to upgrade|outdated|0xFF[Ee][0-9A-Fa-f]{4}|0xFF[Ff][0-9A-Fa-f]{4}|LinearGradient|User Account Control|UAC|uac_tip|install_tip|translate\(\s*['`"]Install['`"]\s*\))")
+                      $bannerAnchor = [regex]::Match($dart, "(Your version is outdated|version is outdated|outdated_version|to upgrade|uac_tip|install_tip|Due to User Account Control)")
                   }
               }
 
-              if ($dart -ne $dOrig) {
-                  Set-Content -Path $_.FullName -Value $dart -Encoding UTF8
+              if ($dart -ne$dOrig) {
+                  Set-Content -Path $_.FullName -Value$dart -Encoding UTF8
                   Write-Host "OK: Bereinigung durchgeführt in $($_.Name)."
               }
           }
@@ -243,16 +232,15 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $ws = (Get-Location).Path -replace '\\', '/'
-          $env:RUSTFLAGS = "-L native=$ws/vcpkg_installed/x64-windows-static/lib"
+          $ws = (Get-Location).Path -replace '\\', '/'$env:RUSTFLAGS = "-L native=$ws/vcpkg_installed/x64-windows-static/lib"
           $env:BINDGEN_EXTRA_CLANG_ARGS = "-I`"$ws/vcpkg_installed/x64-windows-static/include`" -target x86_64-pc-windows-msvc"
 
           cargo build --release --lib --features flutter
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($LASTEXITCODE -ne 0) { exit$LASTEXITCODE }
 
           Set-Location flutter
           flutter build windows --release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($LASTEXITCODE -ne 0) { exit$LASTEXITCODE }
 
       - name: Bundle Executable & DLLs
         shell: pwsh
@@ -279,15 +267,4 @@ jobs:
           Get-ChildItem -Path . -Recurse -Filter "printer_driver_adapter.dll" -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -notlike "*\release_dist\*" } |
             Select-Object -First 1 |
-            ForEach-Object { Copy-Item -Path $_.FullName -Destination "release_dist\printer_driver_adapter.dll" -Force }
-
-          Get-ChildItem -Path "flutter/build/windows/x64/plugins" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue |
-            Copy-Item -Destination "release_dist" -Force
-
-          Get-ChildItem "release_dist" | Select-Object Name, Length
-
-      - name: Upload Complete Windows Client
-        uses: actions/upload-artifact@v4
-        with:
-          name: rustdesk-windows-complete
-          path: release_dist/
+            ForEach-Object { Copy-Item
