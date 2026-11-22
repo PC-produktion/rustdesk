@@ -103,27 +103,28 @@ jobs:
               }
           }
 
-          # 5. Exakte Keys in de.dart finden & Status-/Banner-Code ausgeben und bereinigen
-          $deFile = "flutter/lib/common/langs/de.dart"
-          if (Test-Path $deFile) {
-              $deContent = [System.IO.File]::ReadAllText((Resolve-Path $deFile).Path, $utf8)
-              Write-Host "=== TREFFER IN de.dart ==="
-              ($deContent -split "`r?`n") | Where-Object { $_ -match "(veraltet|Upgrade|Bereit|eigenen Server)" } | ForEach-Object {
-                  Write-Host "  DE: $_"
-              }
-          }
+          # 5. Exaktes Komma in connection_page.dart & pinkes Outdated-Banner entfernen
+          $connPagePath = (Resolve-Path "flutter/lib/desktop/pages/connection_page.dart").Path
+          $connCode = [System.IO.File]::ReadAllText($connPagePath, $utf8)
+          $connCode = $connCode -replace "Text\(', ',\s*style:\s*TextStyle\(fontSize:\s*em\)\)", "const SizedBox.shrink()"
+          $connCode = $connCode -replace "_svcIsUsingPublicServer\.value\s*=\s*await\s+bind\.mainIsUsingPublicServer\(\);", "_svcIsUsingPublicServer.value = false;"
+          $connCode = $connCode -replace "_svcIsUsingPublicServer\.value", "false"
+          [System.IO.File]::WriteAllText($connPagePath, $connCode, $utf8)
+          Write-Host "OK: Komma & setupServerWidget in connection_page.dart deaktiviert."
 
+          # Alle .dart-Dateien nach Banner-/Upgrade-Widgets durchsuchen und deaktivieren
           Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
               $dart = [System.IO.File]::ReadAllText($_.FullName, $utf8)
               $dOrig = $dart
               $isLangFile = $_.FullName -match "[\\/]langs[\\/]"
 
-              # A) Update-, Server-Version- & Outdated-Flags deaktivieren
               $dart = $dart -replace 'newVersion\.isNotEmpty', 'false'
               $dart = $dart -replace 'newVersion\.value\.isNotEmpty', 'false'
               $dart = $dart -replace 'stateGlobal\.newVersion\.value\.isNotEmpty', 'false'
               $dart = $dart -replace 'serverVersion\.isNotEmpty', 'false'
               $dart = $dart -replace 'serverVersion\.value\.isNotEmpty', 'false'
+              $dart = $dart -replace 'versionOld\.value', 'false'
+              $dart = $dart -replace 'isOutdated\.value', 'false'
               $dart = $dart -replace "Future(?:<String>)?\.value\(''\)", "''"
               $dart = $dart -replace 'await\s+bind\.mainGetNewVersion\(\)', "''"
               $dart = $dart -replace 'bind\.mainGetNewVersion\(\)', "Future.value('')"
@@ -134,16 +135,16 @@ jobs:
                   $dart = $dart -replace "translate\(\s*['`"]for faster connection, please setup your own server['`"]\s*\)", "''"
                   $dart = $dart -replace "translate\(\s*['`"]setup_server_tip['`"]\s*\)", "''"
 
-                  # B) Diagnose der Status-Leiste in connection_page.dart & desktop_home_page.dart
-                  if ($_.Name -eq "connection_page.dart" -or $_.Name -eq "desktop_home_page.dart") {
-                      $lines = $dart -split "`r?`n"
-                      for ($idx = 0; $idx -lt $lines.Count; $idx++) {
-                          if ($lines[$idx] -match "(translate\(['`"]Ready['`"]\)|svcStatus|isOutdated|version_outdated|outdated|Status:)") {
-                              Write-Host "=== CODE IN $($_.Name) (Zeile $($idx + 1)) ==="
-                              $from = [Math]::Max(0, $idx - 5)
-                              $to = [Math]::Min($lines.Count - 1, $idx + 8)
+                  # Pinkes Banner ("Your version is outdated" / "Status:" / "upgrade") komplett auf offstage: true / false setzen
+                  if ($dart -match "(outdated|upgrade|version_tip|Status:)") {
+                      Write-Host "=== BANNER-KANDIDAT in $($_.FullName) ==="
+                      $bLines = $dart -split "`r?`n"
+                      for ($idx = 0; $idx -lt $bLines.Count; $idx++) {
+                          if ($bLines[$idx] -match "(outdated|upgrade|version_tip|Status:)") {
+                              $from = [Math]::Max(0, $idx - 8)
+                              $to = [Math]::Min($bLines.Count - 1, $idx + 5)
                               for ($k = $from; $k -le $to; $k++) {
-                                  Write-Host "  L$($k + 1): $($lines[$k])"
+                                  Write-Host "  L$($k + 1): $($bLines[$k])"
                               }
                           }
                       }
@@ -153,6 +154,13 @@ jobs:
               if ($dart -ne $dOrig) {
                   [System.IO.File]::WriteAllText($_.FullName, $dart, $utf8)
               }
+          }
+
+          # Zeilen 60-120 von desktop_home_page.dart zur Kontrolle loggen
+          $hpLines = ([System.IO.File]::ReadAllText($homePagePath, $utf8)) -split "`r?`n"
+          Write-Host "=== desktop_home_page.dart L60-L120 ==="
+          for ($k = 59; $k -lt [Math]::Min(120, $hpLines.Count); $k++) {
+              Write-Host "  L$($k + 1): $($hpLines[$k])"
           }
 
       - name: Install Build Tools
