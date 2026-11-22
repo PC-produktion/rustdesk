@@ -98,10 +98,15 @@ jobs:
                   $fullTextWidget = $ui.Substring($start, $end - $start + 1)
                   $replacement = "Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(bottom: 14.0), child: SizedBox(width: 200, child: Image.asset('assets/brand_logo.png', fit: BoxFit.fitWidth))), $fullTextWidget])"
                   $ui = $ui.Remove($start, $end - $start + 1).Insert($start, $replacement)
-                  [System.IO.File]::WriteAllText($homePagePath, $ui, $utf8)
-                  Write-Host "OK: Großes Logo (width: 200) eingefügt."
               }
           }
+
+          # Pinkes Help-/Install-/LowerVersion-Banner in desktop_home_page.dart komplett abschalten
+          $ui = $ui -replace 'buildHelpCards\(stateGlobal\.updateUrl\.value\)', 'const SizedBox.shrink()'
+          $ui = $ui -replace 'bind\.mainIsInstalledLowerVersion\(\)', 'false'
+          $ui = $ui -replace 'bind\.mainIsInstalled\(\)', 'true'
+          [System.IO.File]::WriteAllText($homePagePath, $ui, $utf8)
+          Write-Host "OK: Großes Logo (width: 200) eingefügt & HelpCards/LowerVersion-Banner entfernt."
 
           # 5. Exaktes Komma in connection_page.dart entfernen (syntaxsicher)
           $connPagePath = (Resolve-Path "flutter/lib/desktop/pages/connection_page.dart").Path
@@ -110,7 +115,7 @@ jobs:
           [System.IO.File]::WriteAllText($connPagePath, $connCode, $utf8)
           Write-Host "OK: Komma-Widget in connection_page.dart entfernt."
 
-          # Alle .dart-Dateien nach Banner-/Upgrade-Widgets durchsuchen und loggen
+          # Alle .dart-Dateien nach Update-Flags & Server-Tipps bereinigen
           Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
               $dart = [System.IO.File]::ReadAllText($_.FullName, $utf8)
               $dOrig = $dart
@@ -119,11 +124,8 @@ jobs:
               $dart = $dart -replace 'newVersion\.isNotEmpty', 'false'
               $dart = $dart -replace 'newVersion\.value\.isNotEmpty', 'false'
               $dart = $dart -replace 'stateGlobal\.newVersion\.value\.isNotEmpty', 'false'
-              $dart = $dart -replace 'serverVersion\.isNotEmpty', 'false'
-              $dart = $dart -replace 'serverVersion\.value\.isNotEmpty', 'false'
-              $dart = $dart -replace 'versionOld\.value', 'false'
-              $dart = $dart -replace 'isOutdated\.value', 'false'
-              $dart = $dart -replace 'bind\.mainGetVersionCheck\(\)', '""'
+              $dart = $dart -replace 'stateGlobal\.updateUrl\.value\.isNotEmpty', 'false'
+              $dart = $dart -replace 'bind\.mainIsInstalledLowerVersion\(\)', 'false'
               $dart = $dart -replace "Future(?:<String>)?\.value\(''\)", "''"
               $dart = $dart -replace 'await\s+bind\.mainGetNewVersion\(\)', "''"
               $dart = $dart -replace 'bind\.mainGetNewVersion\(\)', "Future.value('')"
@@ -133,32 +135,11 @@ jobs:
               if (-not $isLangFile) {
                   $dart = $dart -replace "translate\(\s*['`"]for faster connection, please setup your own server['`"]\s*\)", "''"
                   $dart = $dart -replace "translate\(\s*['`"]setup_server_tip['`"]\s*\)", "''"
-
-                  if ($dart -match "(outdated|upgrade|version_tip|Status:)") {
-                      Write-Host "=== BANNER-KANDIDAT in $($_.FullName) ==="
-                      $bLines = $dart -split "`r?`n"
-                      for ($idx = 0; $idx -lt $bLines.Count; $idx++) {
-                          if ($bLines[$idx] -match "(outdated|upgrade|version_tip|Status:)") {
-                              $from = [Math]::Max(0, $idx - 8)
-                              $to = [Math]::Min($bLines.Count - 1, $idx + 5)
-                              for ($k = $from; $k -le $to; $k++) {
-                                  Write-Host "  L$($k + 1): $($bLines[$k])"
-                              }
-                          }
-                      }
-                  }
               }
 
               if ($dart -ne $dOrig) {
                   [System.IO.File]::WriteAllText($_.FullName, $dart, $utf8)
               }
-          }
-
-          # Zeilen 60-120 von desktop_home_page.dart zur Kontrolle loggen
-          $hpLines = ([System.IO.File]::ReadAllText($homePagePath, $utf8)) -split "`r?`n"
-          Write-Host "=== desktop_home_page.dart L60-L120 ==="
-          for ($k = 59; $k -lt [Math]::Min(120, $hpLines.Count); $k++) {
-              Write-Host "  L$($k + 1): $($hpLines[$k])"
           }
 
       - name: Install Build Tools
