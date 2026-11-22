@@ -103,16 +103,14 @@ jobs:
               }
           }
 
-          # 5. Exaktes Komma in connection_page.dart & pinkes Outdated-Banner entfernen
+          # 5. Exaktes Komma in connection_page.dart entfernen (syntaxsicher)
           $connPagePath = (Resolve-Path "flutter/lib/desktop/pages/connection_page.dart").Path
           $connCode = [System.IO.File]::ReadAllText($connPagePath, $utf8)
           $connCode = $connCode -replace "Text\(', ',\s*style:\s*TextStyle\(fontSize:\s*em\)\)", "const SizedBox.shrink()"
-          $connCode = $connCode -replace "_svcIsUsingPublicServer\.value\s*=\s*await\s+bind\.mainIsUsingPublicServer\(\);", "_svcIsUsingPublicServer.value = false;"
-          $connCode = $connCode -replace "_svcIsUsingPublicServer\.value", "false"
           [System.IO.File]::WriteAllText($connPagePath, $connCode, $utf8)
-          Write-Host "OK: Komma & setupServerWidget in connection_page.dart deaktiviert."
+          Write-Host "OK: Komma-Widget in connection_page.dart entfernt."
 
-          # Alle .dart-Dateien nach Banner-/Upgrade-Widgets durchsuchen und deaktivieren
+          # Alle .dart-Dateien nach Banner-/Upgrade-Widgets durchsuchen und loggen
           Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
               $dart = [System.IO.File]::ReadAllText($_.FullName, $utf8)
               $dOrig = $dart
@@ -125,6 +123,7 @@ jobs:
               $dart = $dart -replace 'serverVersion\.value\.isNotEmpty', 'false'
               $dart = $dart -replace 'versionOld\.value', 'false'
               $dart = $dart -replace 'isOutdated\.value', 'false'
+              $dart = $dart -replace 'bind\.mainGetVersionCheck\(\)', '""'
               $dart = $dart -replace "Future(?:<String>)?\.value\(''\)", "''"
               $dart = $dart -replace 'await\s+bind\.mainGetNewVersion\(\)', "''"
               $dart = $dart -replace 'bind\.mainGetNewVersion\(\)', "Future.value('')"
@@ -135,7 +134,6 @@ jobs:
                   $dart = $dart -replace "translate\(\s*['`"]for faster connection, please setup your own server['`"]\s*\)", "''"
                   $dart = $dart -replace "translate\(\s*['`"]setup_server_tip['`"]\s*\)", "''"
 
-                  # Pinkes Banner ("Your version is outdated" / "Status:" / "upgrade") komplett auf offstage: true / false setzen
                   if ($dart -match "(outdated|upgrade|version_tip|Status:)") {
                       Write-Host "=== BANNER-KANDIDAT in $($_.FullName) ==="
                       $bLines = $dart -split "`r?`n"
