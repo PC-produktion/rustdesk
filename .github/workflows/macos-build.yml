@@ -20,7 +20,7 @@ env:
 
 jobs:
   build-macos:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -156,7 +156,7 @@ jobs:
           brew update
           brew install ninja cmake pkg-config nasm yasm llvm create-dmg
 
-      - name: Setup vcpkg dependencies
+      - name: Setup vcpkg dependencies (Manifest Mode)
         run: |
           git clone --depth 1 https://github.com/microsoft/vcpkg.git $HOME/vcpkg
           $HOME/vcpkg/bootstrap-vcpkg.sh
@@ -167,7 +167,7 @@ jobs:
             TRIPLET="x64-osx"
           fi
           echo "VCPKG_TRIPLET=$TRIPLET" >> $GITHUB_ENV
-          $HOME/vcpkg/vcpkg install --triplet $TRIPLET libvpx libyuv opus aom
+          $HOME/vcpkg/vcpkg install --triplet $TRIPLET --x-manifest-root=.
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -193,9 +193,10 @@ jobs:
         run: |
           ARCH="${{ github.event.inputs.arch || 'x86_64' }}"
           TARGET="${ARCH}-apple-darwin"
+          WS=$(pwd)
           export VCPKG_ROOT="$HOME/vcpkg"
-          export RUSTFLAGS="-L native=$HOME/vcpkg/installed/$VCPKG_TRIPLET/lib"
-          export BINDGEN_EXTRA_CLANG_ARGS="-I$HOME/vcpkg/installed/$VCPKG_TRIPLET/include --target=$TARGET"
+          export RUSTFLAGS="-L native=$WS/vcpkg_installed/$VCPKG_TRIPLET/lib"
+          export BINDGEN_EXTRA_CLANG_ARGS="-I$WS/vcpkg_installed/$VCPKG_TRIPLET/include --target=$TARGET"
 
           cargo build --release --lib --features flutter --target $TARGET
 
