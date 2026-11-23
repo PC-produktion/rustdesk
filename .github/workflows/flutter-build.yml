@@ -1,19 +1,26 @@
-name: Procine Remote Windows Build
+name: Procine Remote macOS Build
 
 on:
   workflow_dispatch:
+    inputs:
+      arch:
+        description: 'Mac Architektur (x86_64 für Intel MacBook Pro, aarch64 für M1/M2/M3/M4)'
+        required: true
+        default: 'x86_64'
+        type: choice
+        options:
+          - x86_64
+          - aarch64
 
 env:
-  VCPKG_ROOT: "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/vcpkg"
-  VCPKGRS_DYNAMIC: "0"
-  LIBCLANG_PATH: "C:/Program Files/LLVM/bin"
   CUSTOM_APP_NAME: "Procine Remote"
   RENDEZVOUS_SERVER: "52.50.230.112"
   RS_PUB_KEY: "cAgyQkD6UEZ559beJIytYbIPnqdGtw42GQP36LuvUcU="
+  MACOSX_DEPLOYMENT_TARGET: "11.0"
 
 jobs:
-  build-windows:
-    runs-on: windows-2022
+  build-macos:
+    runs-on: macos-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -41,12 +48,15 @@ jobs:
               }
           }
 
-          # 2. Windows Fenstertitel anpassen
-          $mainCpp = "flutter/windows/runner/main.cpp"
-          if (Test-Path $mainCpp) {
-              $cpp = [System.IO.File]::ReadAllText((Resolve-Path $mainCpp).Path, $utf8)
-              $cpp = $cpp -replace 'L"RustDesk"', "L`"$env:CUSTOM_APP_NAME`""
-              [System.IO.File]::WriteAllText((Resolve-Path $mainCpp).Path, $cpp, $utf8)
+          # 2. macOS App-Namen in Info.plist & xcconfig anpassen
+          Get-ChildItem -Path "flutter/macos" -Recurse -Include "*.plist", "*.xcconfig", "*.pbxproj" -ErrorAction SilentlyContinue | ForEach-Object {
+              $macTxt = [System.IO.File]::ReadAllText($_.FullName, $utf8)
+              $macOrig = $macTxt
+              $macTxt = $macTxt -replace '>RustDesk<', ">$env:CUSTOM_APP_NAME<"
+              $macTxt = $macTxt -replace 'PRODUCT_NAME = RustDesk', "PRODUCT_NAME = $env:CUSTOM_APP_NAME"
+              if ($macTxt -ne $macOrig) {
+                  [System.IO.File]::WriteAllText($_.FullName, $macTxt, $utf8)
+              }
           }
 
           # 3. Update-Checks in Rust & Dart komplett abschalten
@@ -70,7 +80,7 @@ jobs:
           $pubspecPath = (Resolve-Path "flutter/pubspec.yaml").Path
           $pubspec = [System.IO.File]::ReadAllText($pubspecPath, $utf8)
           if ($pubspec -notmatch 'assets/brand_logo\.png') {
-              $pubspec = $pubspec -replace '(assets:\s*\r?\n)', "`$1    - assets/brand_logo.png`r`n"
+              $pubspec = $pubspec -replace '(assets:\s*\r?\n)', "`$1    - assets/brand_logo.png`n"
               [System.IO.File]::WriteAllText($pubspecPath, $pubspec, $utf8)
           }
 
@@ -101,19 +111,17 @@ jobs:
               }
           }
 
-          # Pinkes Help-/Install-/LowerVersion-Banner in desktop_home_page.dart komplett abschalten
+          # Pinkes Help-/Install-/LowerVersion-Banner in desktop_home_page.dart abschalten
           $ui = $ui -replace 'buildHelpCards\(stateGlobal\.updateUrl\.value\)', 'const SizedBox.shrink()'
           $ui = $ui -replace 'bind\.mainIsInstalledLowerVersion\(\)', 'false'
           $ui = $ui -replace 'bind\.mainIsInstalled\(\)', 'true'
           [System.IO.File]::WriteAllText($homePagePath, $ui, $utf8)
-          Write-Host "OK: Großes Logo (width: 200) eingefügt & HelpCards/LowerVersion-Banner entfernt."
 
-          # 5. Exaktes Komma in connection_page.dart entfernen (syntaxsicher)
+          # 5. Komma in connection_page.dart entfernen
           $connPagePath = (Resolve-Path "flutter/lib/desktop/pages/connection_page.dart").Path
           $connCode = [System.IO.File]::ReadAllText($connPagePath, $utf8)
           $connCode = $connCode -replace "Text\(', ',\s*style:\s*TextStyle\(fontSize:\s*em\)\)", "const SizedBox.shrink()"
           [System.IO.File]::WriteAllText($connPagePath, $connCode, $utf8)
-          Write-Host "OK: Komma-Widget in connection_page.dart entfernt."
 
           # Alle .dart-Dateien nach Update-Flags & Server-Tipps bereinigen
           Get-ChildItem -Path "flutter/lib" -Recurse -Include "*.dart" | ForEach-Object {
@@ -141,47 +149,25 @@ jobs:
                   [System.IO.File]::WriteAllText($_.FullName, $dart, $utf8)
               }
           }
+          Write-Host "OK: Alle macOS-Anpassungen angewendet."
 
-      - name: Install Build Tools
+      - name: Install System Dependencies (Homebrew)
         run: |
-          choco install llvm cmake ninja pkgconfiglite -y
+          brew update
+          brew install ninja cmake pkg-config nasm yasm llvm create-dmg
 
-      - name: Setup Visual Studio Developer Command Prompt
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Install vcpkg dependencies (Manifest Mode)
-        shell: pwsh
+      - name: Setup vcpkg dependencies
         run: |
-          $ErrorActionPreference = "Stop"
-          $utf8 = New-Object System.Text.UTF8Encoding($false)
-          if (Test-Path "mfx_src") {
-              Remove-Item -Path "mfx_src" -Recurse -Force
-          }
-          git clone --depth 1 https://github.com/lu-zero/mfx_dispatch.git mfx_src
-          $mfxSrcPath = (Resolve-Path "mfx_src").Path -replace '\\', '/'
-
-          New-Item -ItemType Directory -Force -Path "res/vcpkg/mfx-dispatch" | Out-Null
-          $vcpkgJsonPath = (Resolve-Path "res/vcpkg/mfx-dispatch").Path + "\vcpkg.json"
-          $portfilePath = (Resolve-Path "res/vcpkg/mfx-dispatch").Path + "\portfile.cmake"
-
-          [System.IO.File]::WriteAllText($vcpkgJsonPath, '{"name":"mfx-dispatch","version":"1.35.1","description":"Intel Media SDK dispatcher","dependencies":[{"name":"vcpkg-cmake","host":true},{"name":"vcpkg-cmake-config","host":true}]}', $utf8)
-
-          $portfileLines = @(
-              "set(SOURCE_PATH `"$mfxSrcPath`")"
-              'vcpkg_cmake_configure(SOURCE_PATH "${SOURCE_PATH}")'
-              'vcpkg_cmake_install()'
-              'if(EXISTS "${CURRENT_PACKAGES_DIR}/lib/pkgconfig")'
-              '  vcpkg_fixup_pkgconfig()'
-              'endif()'
-              'file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include" "${CURRENT_PACKAGES_DIR}/debug/share")'
-              'if(EXISTS "${SOURCE_PATH}/LICENSE")'
-              '  file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)'
-              'endif()'
-          )
-          [System.IO.File]::WriteAllText($portfilePath, ($portfileLines -join "`n"), $utf8)
-
-          & "$env:VCPKG_ROOT\vcpkg.exe" integrate install
-          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows-static --overlay-ports=res/vcpkg
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git $HOME/vcpkg
+          $HOME/vcpkg/bootstrap-vcpkg.sh
+          ARCH="${{ github.event.inputs.arch || 'x86_64' }}"
+          if [ "$ARCH" = "aarch64" ]; then
+            TRIPLET="arm64-osx"
+          else
+            TRIPLET="x64-osx"
+          fi
+          echo "VCPKG_TRIPLET=$TRIPLET" >> $GITHUB_ENV
+          $HOME/vcpkg/vcpkg install --triplet $TRIPLET libvpx libyuv opus aom
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -192,90 +178,46 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
 
       - name: Install flutter_rust_bridge_codegen
         run: cargo install flutter_rust_bridge_codegen --version 1.80.1
 
-      - name: Locate and Build WindowInjection.dll
-        shell: pwsh
-        run: |
-          $proj = Get-ChildItem -Recurse -Filter "*WindowInjection*.vcxproj" | Select-Object -First 1
-          if ($proj) {
-              msbuild $proj.FullName /p:Configuration=Release /p:Platform=x64
-          }
-          $cmakeDir = Get-ChildItem -Recurse -Directory -Filter "*WindowInjection*" | Select-Object -First 1
-          if ($cmakeDir -and (Test-Path "$($cmakeDir.FullName)\CMakeLists.txt")) {
-              cmake -S $cmakeDir.FullName -B "$($cmakeDir.FullName)\build" -A x64
-              cmake --build "$($cmakeDir.FullName)\build" --config Release
-          }
-
-      - name: Prepare Flutter Dependencies
+      - name: Prepare Flutter Dependencies & Bridge
         run: |
           cd flutter
           flutter pub get
-
-      - name: Generate Bridge Code
-        run: |
-          cd flutter
           flutter_rust_bridge_codegen --rust-input ../src/flutter_ffi.rs --dart-output lib/generated_bridge.dart
 
-      - name: Build Rust Engine and Flutter App
-        shell: pwsh
+      - name: Build Rust Engine and Flutter macOS App
         run: |
-          $ErrorActionPreference = "Stop"
-          $ws = (Get-Location).Path -replace '\\', '/'
-          $env:RUSTFLAGS = "-L native=$ws/vcpkg_installed/x64-windows-static/lib"
-          $env:BINDGEN_EXTRA_CLANG_ARGS = "-I`"$ws/vcpkg_installed/x64-windows-static/include`" -target x86_64-pc-windows-msvc"
+          ARCH="${{ github.event.inputs.arch || 'x86_64' }}"
+          TARGET="${ARCH}-apple-darwin"
+          export VCPKG_ROOT="$HOME/vcpkg"
+          export RUSTFLAGS="-L native=$HOME/vcpkg/installed/$VCPKG_TRIPLET/lib"
+          export BINDGEN_EXTRA_CLANG_ARGS="-I$HOME/vcpkg/installed/$VCPKG_TRIPLET/include --target=$TARGET"
 
-          cargo build --release --lib --features flutter
-          if ($LASTEXITCODE -ne 0) {
-              exit $LASTEXITCODE
-          }
+          cargo build --release --lib --features flutter --target $TARGET
 
-          Set-Location flutter
-          flutter build windows --release
-          if ($LASTEXITCODE -ne 0) {
-              exit $LASTEXITCODE
-          }
+          mkdir -p flutter/macos/Frameworks
+          cp "target/$TARGET/release/librustdesk.dylib" flutter/macos/Frameworks/
 
-      - name: Bundle Executable & DLLs
-        shell: pwsh
+          cd flutter
+          flutter build macos --release
+
+      - name: Package macOS DMG
         run: |
-          $ErrorActionPreference = "Stop"
-          if (Test-Path "release_dist") {
-              Remove-Item -Path "release_dist" -Recurse -Force
-          }
-          New-Item -ItemType Directory -Force -Path release_dist | Out-Null
+          ARCH="${{ github.event.inputs.arch || 'x86_64' }}"
+          mkdir -p release_macos
+          APP_PATH=$(find flutter/build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -n 1)
+          echo "Gefundene App: $APP_PATH"
+          cp -R "$APP_PATH" release_macos/
+          hdiutil create -volname "Procine Remote" -srcfolder release_macos -ov -format UDZO "Procine-Remote-macOS-${ARCH}.dmg"
+          mkdir -p upload_dmg
+          mv "Procine-Remote-macOS-${ARCH}.dmg" upload_dmg/
 
-          if (Test-Path "flutter/build/windows/x64/runner/Release") {
-              Copy-Item -Path "flutter/build/windows/x64/runner/Release\*" -Destination "release_dist" -Recurse -Force
-          }
-
-          if (Test-Path "target/release/librustdesk.dll") {
-              Copy-Item -Path "target/release/librustdesk.dll" -Destination "release_dist" -Force
-          }
-          else {
-              Write-Error "target/release/librustdesk.dll wurde nicht erzeugt!"
-          }
-
-          Get-ChildItem -Path . -Recurse -Filter "*WindowInjection*.dll" -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -notlike "*\release_dist\*" } |
-            Select-Object -First 1 |
-            ForEach-Object { Copy-Item -Path $_.FullName -Destination "release_dist\WindowInjection.dll" -Force }
-
-          Get-ChildItem -Path . -Recurse -Filter "printer_driver_adapter.dll" -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -notlike "*\release_dist\*" } |
-            Select-Object -First 1 |
-            ForEach-Object { Copy-Item -Path $_.FullName -Destination "release_dist\printer_driver_adapter.dll" -Force }
-
-          Get-ChildItem -Path "flutter/build/windows/x64/plugins" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue |
-            Copy-Item -Destination "release_dist" -Force
-
-          Get-ChildItem "release_dist" | Select-Object Name, Length
-
-      - name: Upload Complete Windows Client
+      - name: Upload macOS DMG Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rustdesk-windows-complete
-          path: release_dist/
+          name: procine-remote-macos-${{ github.event.inputs.arch || 'x86_64' }}
+          path: upload_dmg/
